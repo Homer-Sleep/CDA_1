@@ -1,0 +1,2634 @@
+---
+title: "Freq Stats Test"
+author: "Ryan, David"
+date: "11/25/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r, include=FALSE, warning=FALSE}
+# set to turn html tables on or off 
+html_tables=T 
+# help! http://www.cookbook-r.com/Graphs/
+#Set type of artifact rejection threshold 
+# SDI= SD individual
+# SD= SD of sample
+# 40= 40uV threshold 
+Multi_Electrode =1
+
+Threshold= 50
+IndvidualFreqBand =0
+SingleAlpha = 0
+LISN_BLC = 0
+
+Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
+#path = "C:\\Dave\\EEG Listening Effort\\YN\\"
+
+ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
+
+OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
+
+Late_filename = "LateTrialArray_Ep_0.4_1.1.csv"
+
+Word_filename ="WordTrialArray_Ep_0_0.7.csv"
+
+# PreCon_filename = "PreConTrialArray_Ep_-0.7_0.csv"
+
+# PrePhrase_filename = "PrePhraseTrialArray-1.5_-0.8.csv" 
+
+Phrase_filename = "PhraseTrialArray_Ep_-0.8_0.csv"
+
+BaseCon_filename = 'BaseConArray.csv'
+
+
+library(plyr)
+library(papeR)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(tidyr)
+library(foreign)
+library(multcomp)
+library(broom)
+library(nlme)
+library(tidyverse)
+library(readxl)
+library(stargazer)
+library(reshape2)
+library(rmarkdown)
+library(psych)
+library(RColorBrewer)
+library(minpack.lm)
+library(numDeriv)
+library(pracma)
+library(formattable)
+library(lme4)
+# library(tictoc)
+
+library(sjPlot)
+library(emmeans)
+# library(Cairo) # Cleans up plot Alias CairoWIN() use ggsave "cairo-png"
+knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
+
+#library(cowplot)
+#library(apaTables)
+# # Matt's custom functions for SD input for error bar plots
+# lower <- function(y) {
+#     return(mean(y)-(sd(y, na.rm=TRUE) / sqrt(length(y))))
+# }
+# 
+# upper <- function(y) {
+#     return(mean(y)+(sd(y, na.rm=TRUE) / sqrt(length(y))))
+# }
+# # Custom function to modify the coef() function to facilitate table output
+# #  From: https://www.r-bloggers.com/2012/05/lme-summary-data-results-table/
+# coef.lme <- function(mod){
+#     res <- data.frame(
+#         "Beta.CI" = paste(round(summary(mod)$coefficients$fixed, 3), " (",round(summary(mod)$coefficients$fixed-1.96*sqrt(diag(mod$varFix)), 2), ",", round(summary(mod)$coefficients$fixed+1.96*sqrt(diag(mod$varFix)), 2),")", sep=""),
+#         "P.value" = round(2 * pt(-abs(summary(mod)$coefficients$fixed/sqrt(diag(mod$varFix))), summary(mod)$fixDF[[1]]), 3)
+#     )
+#     return(res)
+# }
+
+holmsB = function(tTable){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
+  # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
+  k = nrow(tTable)-1
+  X = matrix(0, nrow(tTable), ncol = 3)
+  colnames(X) = c('rank','Adj.α','Adj.p')
+  tTable = cbind(tTable, X)
+  tTable[2:nrow(tTable),6]= rank(tTable[2:nrow(tTable),5])
+  tTable[,8]= (1+k - tTable[,6]) * tTable[,5] # (1+k−i)∗pi -- k = comparisons; i = rank ascending, pi = given p-value
+  tTable[,7] = 0.05/(1+k - tTable[,6])
+  return(tTable)
+}
+
+plot_finish =   theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+  theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))+
+theme(legend.position = "none")
+   
+```
+
+
+```{r, echo=FALSE, warning=FALSE}
+# Import all data:::
+## load in Self-Reprot and PC data
+
+PTA_Demo_Raw=as.data.frame(read_excel(paste0(Behav_path, "EEG_LE_CDA_Data.xlsx"), sheet = 'Enter Data Here'))
+PTA_Demo_Raw = dplyr::filter(PTA_Demo_Raw,Group %in% c("OHL","ONH"))
+PTA_Demo_Raw[PTA_Demo_Raw == ""] = NA # empty cells are NA
+PTA_Demo_Raw = Filter(function(x)!all(is.na(x)),PTA_Demo_Raw) # remove columns that are NA
+
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="Subj#"] = "Sub"
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="MoCA Raw Score"] = "MoCA"
+PTA_Demo_Raw$MoCA = as.integer(PTA_Demo_Raw$MoCA)
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="Adj. MoCA"] = "Adj_MoCA"
+PTA_Demo_Raw$Adj_MoCA = as.integer(PTA_Demo_Raw$Adj_MoCA)
+PTA_Demo_Raw$Sub=gsub("00", "_0", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw$Sub=gsub("L0", "L_", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw$Sub=gsub("H0", "H_", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw = droplevels(PTA_Demo_Raw) # drop all unused factor levels, for all factors in df!
+PTA_Demo_Raw$Sub=as.factor(PTA_Demo_Raw$Sub)
+PTA_Demo = PTA_Demo_Raw[,1:37]
+PTA_Demo$Age = as.numeric(PTA_Demo$Age)
+PTA_Demo$TFI = as.numeric(PTA_Demo$TFI)
+PTA_Demo$PTA = as.numeric(PTA_Demo$PTA)
+PTA_Demo$HF_PTA = as.numeric(PTA_Demo$HF_PTA)
+PTA_Demo$MoCA = as.numeric(PTA_Demo$MoCA)
+PTA_Demo$Education = as.numeric(PTA_Demo$Education)
+
+
+PC_SR = PTA_Demo_Raw[,c(1:5,39:146)]
+        
+# ## load in Self-Reprot and PC data
+# PC_SR_Raw=read.csv(paste0(Behav_path, "EEG_LE_Data_N=34_RLE_ILE.csv"))
+# rename to help with sep=6
+colnames(PC_SR)[colnames(PC_SR)=="R LE LISN"] = "LISN__RLE"
+colnames(PC_SR)[colnames(PC_SR)=="I LE LISN"] = "LISN__ILE"
+# convert to long format and split on 6th char in Variable names
+# using this example: https://stackoverflow.com/questions/25272018/split-column-name-and-convert-data-from-wide-to-long-format-in-r
+# and this for help: https://ademos.people.uic.edu/Chapter9.html
+
+PC_SR=PC_SR %>% gather(var, SR, LISN__RLE:WIN_R2_0dB_ILE)%>%
+  separate(var, c("Run", "Condition"), sep = 6)
+
+
+# remove leading and trailing "_"  
+# help http://www.endmemo.com/program/R/gsub.php
+PC_SR$Condition=gsub("^_", "", PC_SR$Condition)
+PC_SR$Run=gsub("__$","", PC_SR$Run)
+PC_SR$Run=gsub("_$","", PC_SR$Run)
+
+
+
+# fix naming for sep "_" below
+PC_SR$Condition=gsub("RLE", "LISN_RLE", PC_SR$Condition)
+PC_SR$Condition=gsub("ILE", "LISN_ILE", PC_SR$Condition)
+PC_SR$Condition=gsub("_LISN_", "_", PC_SR$Condition)
+
+
+# split Condition name from Score type, ic splits on "_" 
+PC_SR=PC_SR %>% separate(Condition,c("Condition", "Score_type"),
+                         sep = "_") 
+
+#tiddy vers way, change to tibble
+PC_SR_tib = as_tibble(PC_SR) 
+# arrange by subj., works! 
+PC_SR_tib=PC_SR_tib%>% arrange(Sub)
+# make wide format for self reports
+PC_SR_tib=PC_SR_tib%>% spread(Score_type, SR)
+# reorder columns
+PC_SR_tib=PC_SR_tib[c(1:5,7,8, 6, 9:11)]
+# rename columns
+colnames(PC_SR_tib)[colnames(PC_SR_tib)=="Score"] = "WIN_Score"
+
+
+# back to data.frame
+PC_SR=data.frame(PC_SR_tib)
+PC_SR$Run=gsub("LISN", "Baseline", PC_SR$Run)
+PC_SR$Run=as.factor(PC_SR$Run)
+PC_SR$Condition=as.factor(PC_SR$Condition)
+PC_SR$WIN_Score=as.integer(PC_SR$WIN_Score)
+PC_SR$LISN.Correct=as.integer(PC_SR$LISN.Correct)
+PC_SR$ILE=as.integer(PC_SR$ILE)
+PC_SR$RLE=as.integer(PC_SR$RLE)
+rm(PC_SR_Raw)
+rm(PC_SR_tib)
+summary(PTA_Demo)
+```
+
+```{r, echo=FALSE, warning=FALSE,results='asis'}
+GroupTypes = c("ONH", "OHL")
+for (i in GroupTypes){
+ # i=GroupTypes[1]
+path = paste(i, "_EEG_path",sep = "")
+
+## Load EEG ONH data
+# EEG_LE_PrePhrase_Raw =read.csv(paste0(eval(as.name(path)), PrePhrase_filename))
+# EEG_LE_PrePhrase_Raw = dplyr::filter(EEG_LE_PrePhrase_Raw, T2 !="NA")
+
+EEG_LE_Phrase_Raw =read.csv(paste0(eval(as.name(path)), Phrase_filename))
+EEG_LE_Phrase_Raw = dplyr::filter(EEG_LE_Phrase_Raw, T2 !="NA" )
+
+EEG_LE_Word_Raw =read.csv(paste0(eval(as.name(path)), Word_filename))
+EEG_LE_Word_Raw = dplyr::filter(EEG_LE_Word_Raw, T2 !="NA" )
+
+EEG_LE_Late_Raw =read.csv(paste0(eval(as.name(path)), Late_filename))
+EEG_LE_Late_Raw = dplyr::filter(EEG_LE_Late_Raw, T2 !="NA")
+
+EEG_LE_BaseCon_Raw =read.csv(paste0(eval(as.name(path)), BaseCon_filename))
+EEG_LE_BaseCon_Raw = dplyr::filter(EEG_LE_BaseCon_Raw, T2 !="NA" )
+
+# make list of epochs
+Epoch_List = list(EEG_LE_Phrase_Raw,EEG_LE_Word_Raw, EEG_LE_Late_Raw) 
+rm(EEG_LE_PrePhrase_Raw, EEG_LE_Phrase_Raw,EEG_LE_Word_Raw, EEG_LE_Late_Raw)
+
+# merge ONH and OHL
+    # ONH data set
+  if (i == "ONH"){
+    for( ii in seq_along(Epoch_List)){
+    Epoch_List[[ii]]$Group="ONH"
+      Epoch_List[[ii]]$Group=as.factor(Epoch_List[[ii]]$Group)
+      
+    }
+  EEG_LE_ONH=Epoch_List
+  EEG_LE_BaseCon_ONH = EEG_LE_BaseCon_Raw
+    EEG_LE_BaseCon_ONH$Group="ONH"
+    EEG_LE_BaseCon_ONH$Group=as.factor(EEG_LE_BaseCon_ONH$Group)
+  
+  }else{
+    for( ii in seq_along(Epoch_List)){
+    Epoch_List[[ii]]$Group="OHL"
+    Epoch_List[[ii]]$Group=as.factor(Epoch_List[[ii]]$Group)
+    
+    }
+   EEG_LE_OHL=Epoch_List
+   EEG_LE_BaseCon_OHL = EEG_LE_BaseCon_Raw
+    EEG_LE_BaseCon_OHL$Group="OHL"
+    EEG_LE_BaseCon_OHL$Group=as.factor(EEG_LE_BaseCon_OHL$Group)
+  }
+}
+
+SubTrials_list = (replicate(4,data.frame()))
+
+for(ii in seq_along(EEG_LE_ONH)){
+  EEG_LE=merge(EEG_LE_ONH[[ii]],EEG_LE_OHL[[ii]], all = T) # merge each epoch window ONH & OHL
+  Epoch_List[[ii]] = EEG_LE
+    SubTrials_list[[ii]]=dplyr::count(Epoch_List[[ii]], Sub)
+}
+rm(EEG_LE_OHL, EEG_LE_ONH, EEG_LE)
+
+#
+# list over Threshold
+Over_T = Epoch_List
+
+EpochRM=setNames(data.frame(matrix(ncol = 3, nrow = 13)), c("Condition", "Num_RM", "Percent"))
+  EpochRM$Condition=c('Eyes_Open', 'Eyes_Closed', 'Countdown', 'LISN', 'Baseline Total','24dB', '20dB', '16dB',
+                     '12dB', '8dB', '4dB', '0dB','WIN Total')
+  EpochRM_list <- lapply(1:4, function(x) EpochRM)
+  
+
+
+   
+  print(paste(Threshold, "uV was the threshold across all Epochs and participants"))
+for(ii in seq_along(Epoch_List)){
+  
+  #list over threshold WIN and BL 
+  Over_T[[ii]]=dplyr::filter(Epoch_List[[ii]], FzMaxAmp>Threshold)
+  Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], PzMaxAmp>Threshold)))
+   if (Multi_Electrode ==1){
+  Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], F3MaxAmp>Threshold)))
+  Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], P3MaxAmp>Threshold)))
+  Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], F4MaxAmp>Threshold)))
+  Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], P4MaxAmp>Threshold)))
+  }else {}
+  #Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], PzMaxAmp_Ph>Threshold)))
+  #Over_T[[ii]]=unique(rbind(Over_T[[ii]],dplyr::filter(Epoch_List[[ii]], FzMaxAmp_Ph>Threshold)))
+ 
+  
+
+  EpochRM_list[[ii]][1,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="Eyes_Open"))
+  EpochRM_list[[ii]][2,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="Eyes_Closed"))
+  EpochRM_list[[ii]][3,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="Countdown"))
+  EpochRM_list[[ii]][4,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="LISN"))
+  EpochRM_list[[ii]][5,2]=sum(EpochRM_list[[ii]][1:4,2])
+  EpochRM_list[[ii]][6,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="24dB"))
+  EpochRM_list[[ii]][7,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="20dB"))
+  EpochRM_list[[ii]][8,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="16dB"))
+  EpochRM_list[[ii]][9,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="12dB"))
+  EpochRM_list[[ii]][10,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="8dB"))
+  EpochRM_list[[ii]][11,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="4dB"))
+  EpochRM_list[[ii]][12,2]=nrow(dplyr::filter(Over_T[[ii]], Condition =="0dB"))
+  EpochRM_list[[ii]][13,2]=sum(EpochRM_list[[ii]][6:12,2])
+
+  EpochRM_list[[ii]][1,3]=EpochRM_list[[ii]][1,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="Eyes_Open")))
+  EpochRM_list[[ii]][2,3]=EpochRM_list[[ii]][2,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="Eyes_Closed")))
+  EpochRM_list[[ii]][3,3]=EpochRM_list[[ii]][3,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="Countdown")))
+  EpochRM_list[[ii]][4,3]=EpochRM_list[[ii]][4,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="LISN")))
+  EpochRM_list[[ii]][5,3]=EpochRM_list[[ii]][5,2]/(nrow(dplyr::filter(Epoch_List[[ii]], Run =="Baseline")))
+  EpochRM_list[[ii]][6,3]=EpochRM_list[[ii]][6,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="24dB")))
+  EpochRM_list[[ii]][7,3]=EpochRM_list[[ii]][7,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="20dB")))
+  EpochRM_list[[ii]][8,3]=EpochRM_list[[ii]][8,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="16dB")))
+  EpochRM_list[[ii]][9,3]=EpochRM_list[[ii]][9,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="12dB")))
+  EpochRM_list[[ii]][10,3]=EpochRM_list[[ii]][10,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="8dB")))
+  EpochRM_list[[ii]][11,3]=EpochRM_list[[ii]][11,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="4dB")))
+  EpochRM_list[[ii]][12,3]=EpochRM_list[[ii]][12,2]/ (nrow(dplyr::filter(Epoch_List[[ii]], Condition =="0dB")))
+  EpochRM_list[[ii]][13,3]=EpochRM_list[[ii]][13,2]/(nrow(dplyr::filter(Epoch_List[[ii]], Run %in% c("WIN_1", "WIN_2", "WIN_R1", "WIN_R2"))))
+  
+  
+  # Remove over Threshold
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],FzMaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],PzMaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F3MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P3MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F4MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P4MaxAmp < Threshold)
+  # table of trials per sub post-removal 
+    SubTrials_post=count(Epoch_List[[ii]], Sub)
+    SubTrials_list[[ii]]$Remain = SubTrials_post$n
+    rm(SubTrials_post)
+    
+    print(kable( SubTrials_list[[ii]], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(SubTrials_list[[ii]]),color = "black"))
+  
+    # Order the SNR levels for plot
+    Epoch_List[[ii]]$Condition = gsub("dB", "", Epoch_List[[ii]]$Condition) # remove dB    
+    Epoch_List[[ii]]$Condition <- factor( Epoch_List[[ii]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+    Epoch_List[[ii]]$SNR = scale(as.numeric( Epoch_List[[ii]]$Condition), center = T, scale = F) # SNR is centered and continuous 
+     
+  # Order the SNR levels for plot
+      Epoch_List[[ii]]$SNR_plot <- factor(Epoch_List[[ii]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+  
+  # create the variable order 
+  
+  #  which records whether the conditions were presented in sequential order
+  #  or in randomized order
+  Epoch_List[[ii]]$Paradigm <- NA
+  Epoch_List[[ii]]$Paradigm[Epoch_List[[ii]]$Run %in% c("WIN_1", "WIN_2")] <- 0
+  Epoch_List[[ii]]$Paradigm[Epoch_List[[ii]]$Run %in% c("WIN_R1", "WIN_R2")] <- 1
+  # convert to factor and label the levels
+  Epoch_List[[ii]]$Paradigm <- factor(Epoch_List[[ii]]$Paradigm, labels=c("sequential", "randomized"))    
+
+} # for(ii in seq_along(Epoch_List)){
+
+    kable(EpochRM_list[[1]][6:13,], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:8,color = "black")
+  
+
+    
+```
+
+    
+
+
+```{r echo=F, warning=F,results='asis'}
+# standard Frequency bands: # Need baseline condition frequencies for peak alpha. 
+
+  # individual frequency band deliniation
+# merge Baseline 
+EEG_LE_BaseCon_Raw = merge(EEG_LE_BaseCon_ONH, EEG_LE_BaseCon_OHL, all = T)
+#rm(EEG_LE_BaseCon_ONH, EEG_LE_BaseCon_OHL)
+  
+
+   # first find peak alpha from Eye closed baseline
+  
+  EEG_LE_Peak=dplyr::filter(EEG_LE_BaseCon_Raw, Condition == 'Eyes_Closed')
+  # EEG_LE_Peak=EEG_LE_Peak[,-4:-21] # check
+   # Remove over Threshold
+  EEG_LE_Peak=dplyr::filter(EEG_LE_Peak, FzMaxAmp <=Threshold)
+  EEG_LE_Peak=dplyr::filter(EEG_LE_Peak, PzMaxAmp <=Threshold)
+  EEG_LE_Peak=dplyr::filter(EEG_LE_Peak, F3MaxAmp <=Threshold)
+  EEG_LE_Peak=dplyr::filter(EEG_LE_Peak, P3MaxAmp <=Threshold)
+  EEG_LE_Peak=dplyr::filter(EEG_LE_Peak, F4MaxAmp <=Threshold)
+  EEG_LE_Peak=dplyr::filter(EEG_LE_Peak, P4MaxAmp <=Threshold)
+
+ 
+ # Mean of each Freq band T2:A14 by sub
+PeakTable=unique(dplyr::select(EEG_LE_BaseCon_Raw, 'Sub')) # pull sub names
+
+PeakTable$A6=(tapply(EEG_LE_Peak$A6,EEG_LE_Peak$Sub, mean))
+PeakTable$A7=(tapply(EEG_LE_Peak$A7,EEG_LE_Peak$Sub, mean))
+PeakTable$A8=(tapply(EEG_LE_Peak$A8,EEG_LE_Peak$Sub, mean))
+PeakTable$A9=(tapply(EEG_LE_Peak$A9,EEG_LE_Peak$Sub, mean))
+PeakTable$A10=(tapply(EEG_LE_Peak$A10,EEG_LE_Peak$Sub, mean))
+PeakTable$A11=(tapply(EEG_LE_Peak$A11,EEG_LE_Peak$Sub, mean))
+PeakTable$A12=(tapply(EEG_LE_Peak$A12,EEG_LE_Peak$Sub, mean))
+PeakTable$A13=(tapply(EEG_LE_Peak$A13,EEG_LE_Peak$Sub, mean))
+PeakTable$A14=(tapply(EEG_LE_Peak$A14,EEG_LE_Peak$Sub, mean))
+
+# find max amp for each 
+z=apply(PeakTable,1,which.max)
+PeakTable$RPA= names(PeakTable)[z]
+
+  EEG_LE_BaseCon_Raw= merge(x=EEG_LE_BaseCon_Raw, y=PeakTable[,-2:-10], by = 'Sub')
+  
+  PeakTable$Participant=1:nrow(PeakTable)
+    row.names(PeakTable) <- NULL
+    PeakTable$RPA= gsub("A", "", PeakTable$RPA)
+    PeakTable$RPA = as.numeric(PeakTable$RPA)
+    PeakTable$RPA_plot= gsub("$", " Hz", PeakTable$RPA)
+    PeakTable$RPA_plot <- factor(PeakTable$RPA_plot, levels=c("6 Hz","7 Hz","8 Hz","9 Hz", "10 Hz", "11 Hz", "12 Hz", "13 Hz")) 
+    PeakTable = merge(PeakTable, unique(dplyr::select(Epoch_List[[1]], Sub, Group)), by = "Sub", all.x = T)
+    PC_SR = merge(PC_SR, dplyr::select(PeakTable, Sub, RPA), by = "Sub") 
+    PTA_Demo = merge(PTA_Demo, dplyr::select(PeakTable, Sub, RPA), by = "Sub") 
+ 
+  
+
+  # EEG_LE_List = Epoch_List
+   # loop to make new freq bands...
+  for(i_epoch in seq_along(Epoch_List)) {
+
+    # Epoch_List[[i_epoch]]=EEG_LE_BaseCon_Raw[,1:3]
+   #Epoch_List[[i_epoch]]$Theta=rowMeans(Epoch_List[[i_epoch]][,8:12])
+    Epoch_List[[i_epoch]]$Theta_IAF=0 # Adujusted theta requires engaged vs passive shift of theta power or 4 Hz below IAF. 
+    Epoch_List[[i_epoch]]$Alpha_IAF = 0
+    # merge RPA into EEG data set:
+  Epoch_List[[i_epoch]] = merge (Epoch_List[[i_epoch]], dplyr::select(PeakTable, Sub, RPA), by = "Sub") 
+
+# create freq based on peak alpha
+  print("Each individual's peak alpha, Theta = IAF - 8 to IAF-4  Alpha = IAF-3 to IAF+2 ")   
+  
+     # for loop through data set  rowMeans(dplyr::select(Epoch_List[[i_epoch]], T4:T8))
+  for (irow in 1:nrow(Epoch_List[[i_epoch]])){
+
+    if   (dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A6' || dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) =="A7" ||
+          dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A8')
+      
+              Epoch_List[[i_epoch]][irow,]$Theta_IAF=rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],T2:T6)) # set to new Theta
+              Epoch_List[[i_epoch]][irow,]$Alpha_IAF=rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],A6:A10))# set to new Alpha
+  
+               if   (dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A9')
+              Epoch_List[[i_epoch]][irow,]$Theta_IAF=rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],T3:T7))
+              Epoch_List[[i_epoch]][irow,]$Alpha_IAF= rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],A7:A11))
+        
+               if   (dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A10')
+              Epoch_List[[i_epoch]][irow,]$Theta_IAF= rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],T4:T8))
+              Epoch_List[[i_epoch]][irow,]$Alpha_IAF=rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],A8:A12)) 
+        
+               if   (dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A11')
+              Epoch_List[[i_epoch]][irow,]$Theta_IAF= rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],T5:T9))
+              Epoch_List[[i_epoch]][irow,]$Alpha_IAF= rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],A9:A13)) 
+        
+               if   (dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == "A12" || dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A13'||
+              dplyr::select(EEG_LE_BaseCon_Raw[irow,], RPA) == 'A14')
+              Epoch_List[[i_epoch]][irow,]$Theta_IAF= rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],T6:T10))
+              Epoch_List[[i_epoch]][irow,]$Alpha_IAF= rowMeans(dplyr::select(Epoch_List[[i_epoch]][irow,],A10:A14)) 
+ 
+}  # end - for (irow in 1:nrow(EEG_LE_Raw)){ 
+    if (i_epoch ==1){
+
+    
+    print(ggplot (PeakTable, aes(x=RPA_plot, fill = Group))+ geom_bar()+
+      scale_y_continuous(limits = c(0, 14),breaks = c(2, 4, 6,8,10,12,14))+
+      #scale_x_continuous(limits = c(5, 11.9),breaks = c(6, 7, 8, 9, 10, 11))+
+       labs(title = "Resting Peak Alpha (RPA) With Eyes Closed")+
+    xlab("")+ ylab("Count")+
+      theme_classic()+
+       theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18)))
+# 
+# corr.test(dplyr::select (PTA_Demo, RPA, Age, Education,MoCA, TFI, PTA, HF_PTA, Left.SRT, Right.SRT, 
+#                          Left.Word.Rec, Right.Word.Rec, SII.Left, SII.Right) , adjust = "BH")
+      
+print(kable( PeakTable[,1:11], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(PeakTable[,1:11]),color = "black"))
+
+    }
+    
+  
+# Make Theta, low alpha and high alpha variables from standard band deliniation 
+  Epoch_List[[i_epoch]]$Theta=rowMeans(dplyr::select(Epoch_List[[i_epoch]], T4:T8))
+  Epoch_List[[i_epoch]]$Alpha=rowMeans(dplyr::select(Epoch_List[[i_epoch]],A8:A12))
+  
+# SNR variable 
+  Epoch_List[[i_epoch]]$SNR = scale(as.numeric(Epoch_List[[i_epoch]]$Condition), center = T, scale = F) # SNR is centered and continuous 
+  
+
+
+  }
+  
+
+```
+
+## Plots 
+
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+
+PC_df=dplyr::filter(PC_SR, Condition != 'LISN')
+PC_SR$Condition = gsub("dB", "", PC_SR$Condition) # add space
+
+PC_df$SNR_plot <- factor(dplyr::filter(PC_SR, Condition != 'LISN')$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+PC_df$Group = factor(PC_df$Group, levels = c('OHL', 'ONH'))
+PC_df$Age = as.numeric(PC_df$Age)
+PC_df$Veteran. = factor(PC_df$Veteran.)
+PC_df$Gender = factor(PC_df$Gender)
+PC_df$SNR = scale(as.numeric(PC_df$SNR_plot), center = T, scale = F) # SNR is centered and ## not longer with below line ## continuous 
+
+
+
+# create Percent Correct variable
+PC_df$PerCor = (PC_df$WIN_Score/5)*100
+#PC_df$PerCor = (PC_df$WIN_Score/5)
+# PC plot
+ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor, group=Group, shape=21))+
+   geom_line(stat="summary", fun=mean,  size=1.3)+
+    stat_summary(geom = "errorbar",  fun.data = mean_se,  color="black",size=.8, width=.2)+
+   geom_point(aes(fill=Group),size=4, stat="summary", fun=mean)+
+  scale_shape_identity()+
+   scale_fill_manual(values = c("white", "black"))+
+  #scale_color_identity(guide = "legend")+
+      theme_classic()+
+  scale_y_continuous(breaks=c(0,20,40, 60, 80,100))+
+   #annotate("text", x = 6, y = 90, label = CurGroup, fontface=2)+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("WORDS RECOGNIZED \nIN % CORRECT")+
+  plot_finish
+
+
+```
+
+```{r, echo=FALSE,results='asis'}
+ for (i in seq_along(Epoch_List)){
+
+     # WIN_Score
+  Epoch_List[[i]]$WIN_Score = Epoch_List[[i]]$Response == 'Cor'
+  # Merge/add self report
+   Epoch_List[[i]] = merge(Epoch_List[[i]], PC_SR%>%dplyr::select(Sub, Age, Run, Condition, ILE, RLE)%>% 
+                   dplyr::filter(!Run %in% c('Baseline', 'WIN_P')), by = c('Sub', 'Run', 'Condition'), all = TRUE)
+   Epoch_List[[i]]= Epoch_List[[i]][!is.na(Epoch_List[[i]]$T2),]
+   Epoch_List[[i]]$Group = factor( Epoch_List[[i]]$Group, levels = c('OHL', 'ONH'))
+
+ }
+```
+
+## WIN effect of SNR
+### Group effect on WIN
+
+```{r, echo=FALSE,results='asis'}
+# WIN
+WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+WIN_Score_Group <- lme((WIN_Score) ~ Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
+
+WIN_Score_Group_SNR <- lme((WIN_Score) ~ Group*SNR, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+WIN_Score_Group_SNR_Run <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+
+T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR,WIN_Score_Group_SNR_Run) 
+
+print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+
+
+# summary(WIN_Score_SNR)
+summary(WIN_Score_Group_SNR)
+
+
+```
+
+### ONH
+
+```{r, echo=FALSE,results='asis'}
+# WIN
+WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
+                   data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML")
+
+WIN_Score_SNR <- lme((WIN_Score) ~ SNR, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML") 
+
+WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML")
+
+T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
+
+print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+cat('\n')
+
+summary(WIN_Score_SNR)
+
+
+```
+
+### OHL
+
+```{r, echo=FALSE,results='asis'}
+# WIN
+WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
+                   data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML")
+
+WIN_Score_SNR <- lme((WIN_Score) ~ SNR, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML") 
+
+WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML")
+
+T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
+
+print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+cat('\n')
+
+summary(WIN_Score_SNR)
+
+
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, ,results='asis'}
+
+## shapes for legends
+d=data.frame(a=c("22","25","24", "b", "d", 'C'))
+ggplot() +
+scale_x_discrete(name="") +
+  geom_hline(yintercept=0, linetype="solid", size = 1.3)+
+  geom_hline(yintercept=0.1, linetype="solid", color = "gray65",size = 1.3)+
+scale_y_continuous(limits=c(0,1), breaks=NULL, name="") +
+#scale_shape_discrete(solid=T) +
+  scale_shape_manual(values=c(22,24,25,21, 23, 22 ))+
+  
+   theme_classic()+
+geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black"), size=4)+
+  scale_fill_manual(values = "black")
+ggplot() +
+scale_x_discrete(name="") +
+  geom_hline(yintercept=0, linetype="dashed", size = 1.3)+
+  geom_hline(yintercept=.10, linetype="dotted", size = 1.3)+
+scale_y_continuous(limits=c(0,1), breaks=NULL, name="") +
+#scale_shape_discrete(solid=T) +
+  scale_shape_manual(values=c(22,24,25,21, 23, 22 ))+
+  
+   theme_classic()+
+geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black"), size=4)+
+  scale_fill_manual(values = "white")
+```
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+# PC by list and paradigm plot list1/2=closed/open, paradigm1=solid/dashed
+# GroupTypes = c("ONH", "OHL")
+# for (i in GroupTypes){
+#  # i=GroupTypes[2]
+# if (i="ONH"){
+#   
+# }}
+# ONH plot
+PC_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+                 geom = "errorbar",fun.data = mean_se, color="black",size=.7,width=.2)+
+  
+    
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+     
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+  
+        
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+             shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+   
+  theme_classic()+
+   #labs(title = "Words Recognized over WIN SNR")+
+    #scale_y_continuous(breaks=c(.20,.40, .60, .80,1),labels = scales::percent_format(accuracy = 1))+
+  scale_y_continuous(breaks=c(0,20,40, 60, 80,100))+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("WORDS RECOGNIZED \nIN % CORRECT")+
+  plot_finish
+   
+print(PC_plot)
+
+# OHL plot
+PC_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+    
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+     
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+  
+        
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+             shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+   
+  theme_classic()+
+   #labs(title = "Words Recognized over WIN SNR")+
+    #scale_y_continuous(breaks=c(.20,.40, .60, .80,1),labels = scales::percent_format(accuracy = 1))+
+  scale_y_continuous(breaks=c(0,20,40, 60, 80,100))+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("WORDS RECOGNIZED \nIN % CORRECT")+
+  plot_finish
+   
+print(PC_plot)
+
+```
+
+
+### Self-Reported Listening Effort
+
+```{r, echo=FALSE, results='hide'}
+# Required for ONH OHL
+ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE, group=Group, shape=23))+
+   geom_line(stat="summary", fun=mean,  size=1.3)+
+   stat_summary(  geom = "errorbar",fun.data = mean_se, size=.7,width=.4)+
+   geom_point(aes(fill=Group),size=4, stat="summary", fun=mean)+
+  scale_shape_identity()+
+   scale_fill_manual(values = c("white", "black"))+
+  #scale_color_identity(guide = "legend")+
+   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED \nSELF-REPORTED EFFORT")+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+ theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))+
+theme(legend.position = "none")
+
+
+# Invested for ONH OHL
+ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE, group=Group, shape=23))+
+   geom_line(stat="summary", fun=mean,  size=1.3)+
+   stat_summary(  geom = "errorbar",fun.data = mean_se, width=.4, size=.7)+
+   geom_point(aes(fill=Group),size=4, stat="summary", fun=mean)+
+  scale_shape_identity()+
+   scale_fill_manual(values = c("white", "black"))+
+  #scale_color_identity(guide = "legend")+
+   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("INVESTED \nSELF-REPORTED EFFORT")+
+plot_finish
+
+
+```
+
+## Group effect on listening effort
+### ILE 
+
+```{r, echo=FALSE,results='asis'}
+# WIN
+ILE_NoCon <- lme((ILE) ~ 1, random=~1|Sub,
+                   data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+ILE_Group <- lme((ILE) ~ Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
+
+ILE_Group_SNR <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+ILE_Group_SNR_Run <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR,ILE_Group_SNR_Run) 
+
+print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+
+Result = holmsB(summary(ILE_Group_SNR)[['tTable']])
+(kable(Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+
+
+```
+
+### RLE 
+
+```{r, echo=FALSE,results='asis'}
+# WIN
+RLE_NoCon <- lme((RLE) ~ 1, random=~1|Sub,
+                   data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+RLE_Group <- lme((RLE) ~ Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
+
+RLE_Group_SNR <- lme((RLE) ~ Group*SNR, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+RLE_Group_SNR_Run <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR,RLE_Group_SNR_Run) 
+
+print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+
+
+Result = holmsB(summary(RLE_Group_SNR)[['tTable']])
+(kable(Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+```
+
+### Required Self-Reported Listening Effort
+```{r, echo=FALSE, results='hide'}
+# attempt at PC and self-report plot
+SelfReport_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=RLE),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+    
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=RLE),
+             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+     
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=RLE),
+             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+  
+        
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=RLE),
+             shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
+
+ 
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED \nSELF-REPORTED EFFORT")+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+ theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))
+   
+print(SelfReport_plot)
+```
+
+
+### Invested Self-Reported Listening Effort
+```{r, echo=FALSE, results='hide'}
+# attempt at PC and self-report plot
+SelfReport_plot=ggplot()+
+  
+    geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=ILE),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+    
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=ILE),
+             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+     
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=ILE),
+             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+  
+        
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=ILE),
+             shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
+
+  
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("INVESTED \nSELF-REPORTED EFFORT")+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+ theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))
+   
+print(SelfReport_plot)
+```
+
+```{r, echo=FALSE,warning=FALSE, fig.height = 3, fig.width = 4}
+# Hist of each,  transform required. 
+for (i_epoch in seq_along(Epoch_List)){
+print(ggplot ( Epoch_List[[i_epoch]], aes(x=Theta))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+  
+print(ggplot ( Epoch_List[[i_epoch]], aes(x=Theta_IAF))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+  
+  
+print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+
+print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha_IAF))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+
+Epoch_List[[i_epoch]]$Theta = log(Epoch_List[[i_epoch]]$Theta) 
+Epoch_List[[i_epoch]]$Theta_IAF = log(Epoch_List[[i_epoch]]$Theta_IAF) 
+Epoch_List[[i_epoch]]$Alpha = log(Epoch_List[[i_epoch]]$Alpha) 
+Epoch_List[[i_epoch]]$Alpha_IAF = log(Epoch_List[[i_epoch]]$Alpha_IAF) 
+
+print(ggplot ( Epoch_List[[i_epoch]], aes(x=Theta))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+  
+print(ggplot ( Epoch_List[[i_epoch]], aes(x=Theta_IAF))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+  
+  
+print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+
+print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha_IAF))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+
+}
+
+```
+
+## Theta by group ONH=black
+```{r echo=FALSE}
+
+epoch_names = c( "Phrase", "Word", "Late")
+Freq_type = c("", "_IAF")
+for (i_epoch in seq_along(Epoch_List)){
+
+  
+  for(i in Freq_type){
+  Freq = paste0("Theta", i)
+  
+# THeta both groups
+print(ggplot(data=dplyr::filter(Epoch_List[[i_epoch]], !is.na(SNR_plot)), aes(x=SNR_plot, y=get(Freq), group = Group))+
+        # print(ggplot(data=dplyr::filter(Epoch_List[[i_epoch]], !is.na(SNR_plot), Group == 'ONH'), aes(x=SNR_plot, y=get(Freq), group = Group))+
+                   
+geom_line(aes(linetype='Theta', size=.8),stat="summary", fun=mean)+
+  stat_summary(aes(size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  geom_point(aes( shape="Theta", fill=Group, size = 4),stat="summary", fun=mean)+
+  
+
+  #scale_shape_discrete(guide = guide_legend(reverse=TRUE))+
+  scale_shape_manual(values=c(25, 21))+
+   scale_fill_manual(values = c( "white","black"))+
+  # scale_linetype_manual(values = c("solid"))+
+
+
+ # guides(size=FALSE,linetype=FALSE, shape=guide_legend(title=NULL,override.aes = list(size = 4)))+
+         
+    coord_cartesian(ylim=c(-1.25, .8))+
+      labs(title = paste("Frequency Power of", Freq, "for", epoch_names[i_epoch]))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+ theme(legend.text = element_text( size = 18, face = "bold"))+
+theme(legend.position="none")+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8)))
+  }
+}
+```
+
+## Effects on STD Theta Power, Effect of Group?
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# Theta
+Theta_NoSNR <- lme((Theta) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Theta_Group <- lme((Theta) ~ Group, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Theta_Group_SNR <- lme((Theta) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Theta_Group_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Theta_NoSNR, Theta_Group, Theta_Group_SNR,Theta_Group_SNR_Paradigm)
+
+print(kable(T_Result, format = "html", escape = F , caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+Models = c('Theta_Group','Theta_Group_SNR','Theta_Group_SNR_Paradigm') # exclude first model
+
+for (post_i in 1:length(Models)) {
+   iii = post_i +1
+  if (T_Result[iii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+}
+contrasts(Epoch_List[[1]]$Group)
+contrasts(Epoch_List[[1]]$Paradigm)
+
+```
+
+## Theta Phrase Interaction of Paradigm and polynomials:
+```{r, echo=FALSE, results='hide'}
+# attempt at PC and self-report plot
+ThetaParadigm_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'sequential'), aes(x=SNR_plot, y=Theta),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'sequential'), aes(x=SNR_plot, y=Theta),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'sequential'), aes(x=SNR_plot, y=Theta),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+    
+  # geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
+  #             stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  # stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
+  #                 geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  # geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
+  #            shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+     
+  # geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
+  #             stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  # stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
+  #                 geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  # geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
+  #            shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+  
+        
+  geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
+             shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
+
+ 
+  # scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+  labs(title = "Theta by Paradigm")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+ theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))
+   
+print(ThetaParadigm_plot)
+print( 'White = Random')
+```
+
+## Effect of Group = Yes, Theta: ONH - OHL:
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+ for (i in seq_along(Epoch_List)){
+# Theta
+Theta_NoSNR <- lme((Theta) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+Theta_SNR <- lme((Theta) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+Theta_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Theta for", Epoch_Win[i], Group_i)) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+
+Models = c('Theta_SNR','Theta_SNR_Paradigm') # exclude first model
+
+for (post_i in 1:length(Models)) {
+   iii = post_i +1
+  if (T_Result[iii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+}
+
+```
+
+
+## Alpha by group  ONH = Black
+
+```{r echo=FALSE}
+for (i_epoch in seq_along(Epoch_List)){
+  
+  for(i in Freq_type){
+  Freq = paste0("Alpha", i)
+    
+# THeta both groups
+print(ggplot(data=dplyr::filter(Epoch_List[[i_epoch]], !is.na(SNR_plot)), aes(x=SNR_plot, y=get(Freq), group = Group))+
+                   
+geom_line(aes(linetype='Theta', size=.8),stat="summary", fun=mean)+
+  stat_summary(aes(size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  geom_point(aes( shape="Theta", fill=Group, size = 4),stat="summary", fun=mean)+
+  
+  # geom_point(aes( y=Alpha, shape="Alpha", fill="alpha",size = 4),stat="summary", fun=mean)+       
+  # geom_line(aes(y=Alpha,  group=10, linetype='Alpha', size=.8),stat="summary", fun=mean)+
+  # stat_summary(aes(y=Alpha,size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  
+  scale_shape_discrete(guide = guide_legend(reverse=TRUE))+
+  scale_shape_manual(values=c(22))+
+   scale_fill_manual(values = c( "white","black"))+
+  # scale_linetype_manual(values = c("solid"))+
+ 
+
+ # guides(size=FALSE,linetype=FALSE, shape=guide_legend(title=NULL,override.aes = list(size = 4)))+
+         
+  
+      labs(title = paste("Frequency Power of", Freq, "for", epoch_names[i_epoch]))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+ coord_cartesian(ylim=c(-1.25, .8))+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+ theme(legend.text = element_text( size = 18, face = "bold"))+
+theme(legend.position="none")+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8)))
+  }
+}
+```
+
+## Effects on STD Alpha Power
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# Alpha
+Alpha_NoSNR <- lme((Alpha) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_Group <- lme((Alpha) ~ Group, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Alpha_NoSNR, Alpha_Group)
+
+print(kable(T_Result, format = "html", escape = F , caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+}
+
+
+```
+
+## Effect of Group = Yes, Alpha: ONH - OHL:
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+ for (i in seq_along(Epoch_List)){
+# Alpha
+Alpha_NoSNR <- lme((Alpha) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+Alpha_SNR <- lme((Alpha) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+Alpha_SNR_Paradigm <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Alpha for", Epoch_Win[i], Group_i)) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+
+Models = c('Alpha_SNR','Alpha_SNR_Paradigm') # exclude first model
+
+for (post_i in 1:length(Models)) {
+   iii = post_i +1
+  if (T_Result[iii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+}
+
+```
+
+
+```{r, echo=FALSE,results='asis', eval=FALSE}
+#### No effect of group?
+# plot(dplyr::filter(Epoch_List[[3]], Group == "ONH")$Alpha, dplyr::filter(Epoch_List[[3]], Group == "OHL")$Alpha)
+OHL_df = filter(Epoch_List[[3]], Group == "OHL")
+ONH_df = filter(Epoch_List[[3]], Group == "ONH")
+length(OHL_df$Alpha)
+length(ONH_df$Alpha)
+plot(OHL_df$Alpha)
+plot(ONH_df$Alpha)
+with(Epoch_List[[3]],plot(Alpha, Alpha_IAF))
+with(Epoch_List[[3]],plot(Theta, Theta_IAF))
+
+```
+
+
+
+
+## EEG-YN Alpha, Theta, and SNR were regressed on WIN, ILE, and RLE:
+
+
+### Effect of Theta on WIN
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# WIN
+WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+WIN_SNR <- lme(WIN_Score ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+WIN_SNR_Theta <- lme(WIN_Score ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+# WIN_SNR_Alpha_Theta <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE)* poly(Theta, degree = 3, raw = TRUE), random=~1|Sub,
+#                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+
+T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Theta)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on WIN for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'WIN_SNR_Theta') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+  print(kable(Result, format = "html", escape = F, 
+            caption = paste("Theta effect on WIN for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+}
+
+```
+
+### Effect of Alpha on WIN
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# WIN
+WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+WIN_SNR <- lme(WIN_Score ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+WIN_SNR_Alpha <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+# WIN_SNR_Alpha_Theta <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE)* poly(Theta, degree = 3, raw = TRUE), random=~1|Sub,
+#                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+
+T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Alpha)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on WIN for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'WIN_SNR_Alpha') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+print(kable(Result, format = "html", escape = F, 
+            caption = paste("Alpha effect on WIN for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+  }
+
+```
+
+
+### Effect of Theta on RLE
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# RLE
+RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR <- lme(RLE ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR_Theta <- lme(RLE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+
+T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Theta)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on RLE for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'RLE_SNR_Theta') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+print(kable(Result, format = "html", escape = F, 
+            caption = paste("Theta effect on RLE for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+  }
+
+```
+
+### Effect of Alpha on RLE
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# RLE
+RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR <- lme(RLE ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR_Alpha <- lme(RLE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+    
+T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Alpha)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on RLE for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'RLE_SNR_Alpha') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+  print(kable(Result, format = "html", escape = F, 
+            caption = paste("Alpha effect on RLE for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+  }
+
+```
+
+
+### Effect of Theta on ILE
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# ILE
+ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR <- lme(ILE ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR_Theta <- lme(ILE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+
+T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Theta)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on ILE for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'ILE_SNR_Theta') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+  print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on ILE for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+  }
+
+```
+
+### Effect of Alpha on ILE
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# ILE
+ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR <- lme(ILE ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR_Alpha <- lme(ILE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+    
+T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Alpha)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on ILE for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'ILE_SNR_Alpha') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+  print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on ILE for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+  }
+
+```
+
+### Effect of ILE on Alpha
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+
+ for (i in seq_along(Epoch_List)){
+
+# Alpha
+Alpha_Null <- lme(Alpha ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+Alpha_SNR <- lme(Alpha ~ SNR, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+Alpha_SNR_ILE <- lme(Alpha ~ SNR*ILE, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+    
+T_Result=anova(Alpha_Null, Alpha_SNR, Alpha_SNR_ILE)
+
+print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on Alpha for", Epoch_Win[i], Group_i) ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+# print(T_Result)
+Models = c( 'Alpha_SNR_ILE') # exclude first two models
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+  print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+  }
+
+```
+
+# plot Alpha and ILE for OHL:
+
+```{r, echo=FALSE}
+# Alpha both groups
+OHL_Alpha = ggplot(data=dplyr::filter(Epoch_List[[2]], !is.na(SNR_plot), Group == 'OHL'), aes(x=SNR_plot, y=Alpha))+
+                   
+geom_line(aes(linetype='solid', size=.8, group = 10),stat="summary", fun=mean)+
+  stat_summary(aes(size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  geom_point(aes( shape="Theta", fill=Group, size = 4),stat="summary", fun=mean)+
+
+  
+  scale_shape_discrete(guide = guide_legend(reverse=TRUE))+
+  scale_shape_manual(values=c(22))+
+   scale_fill_manual(values = c( "white","black"))+
+  # scale_linetype_manual(values = c("solid"))+
+ 
+
+ # guides(size=FALSE,linetype=FALSE, shape=guide_legend(title=NULL,override.aes = list(size = 4)))+
+         
+  # coord_cartesian(ylim=c(-1.25, .8))+ 
+      labs(title = paste("Alpha Power for OHL"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+       plot_finish
+print(OHL_Alpha)
+
+# Invested for ONH OHL
+ggplot(dplyr::filter(PC_df, Condition != "LISN", Group == 'OHL'), aes(x=SNR_plot, y=ILE, shape=23))+
+   geom_line(stat="summary", fun=mean,  size=1.3, group = 10)+
+   stat_summary(  geom = "errorbar",fun.data = mean_se, width=.4, size=.7)+
+   geom_point(aes(fill=Group),size=4, stat="summary", fun=mean)+
+  scale_shape_identity()+
+   scale_fill_manual(values = c("white", "black"))+
+  #scale_color_identity(guide = "legend")+
+   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+ labs(title = "OHL ILE")+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("INVESTED \nSELF-REPORTED EFFORT")+
+  theme_classic()+
+  plot_finish
+
+# correlation of ILE and Alpha
+ILE_ALpha_Cor =  with(filter(Epoch_List[[2]], Group == 'OHL'), corr.test(Alpha, ILE))
+paste('Correlation ILE-Alpha R =',ILE_ALpha_Cor$r)
+paste('Correlation ILE-Alpha p value = ',ILE_ALpha_Cor$p)
+```
+
+
+```{r, echo=FALSE,results='asis', eval=FALSE}
+# ## Effects on IAF Alpha Power
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+print('')
+    print(paste("SNR effect on Alpha_IAF for", Epoch_Win[i]))
+# Alpha_IAF
+Alpha_IAF_NoSNR <- lme((Alpha_IAF) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_IAF_Group <- lme((Alpha_IAF) ~ Group, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_IAF_Group_SNR <- lme((Alpha_IAF) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_IAF_Group_SNR_Paradigm <- lme((Alpha_IAF) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Alpha_IAF_NoSNR, Alpha_IAF_Group,Alpha_IAF_Group_SNR,Alpha_IAF_Group_SNR_Paradigm)
+
+print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+
+Models = c( 'Alpha_IAF_Group','Alpha_IAF_Group_SNR','Alpha_IAF_Group_SNR_Paradigm') # exclude first model
+
+for (post_i in 1:length(Models)) {
+   ii = post_i +1
+  if (T_Result[ii,9] < 0.05){
+    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+  print(kable(Result, format = "html", escape = F, 
+            caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
+  }
+}
+
+ }
+# ## Pairwise
+# PT_Result=lsmeans(RLE_Group_SNR, pairwise~SNR, adjust="tukey")
+# 
+# print(kable(PT_Result$contrasts, format = "html", escape = F ) %>%
+#   kable_styling( full_width = F)%>%
+#   column_spec(1,color="black", bold=T)%>%
+#   row_spec(0:nrow(PT_Result[["contrasts"]]@grid),color = "black"))
+# # rm(PT_Result)
+```
+
+
+## Freq band by group
+
+```{r, echo=FALSE}
+for (i_epoch in seq_along(Epoch_List)){
+  
+  for(i in Freq_type){
+  Theta_Freq = paste0("Theta", i)
+  Alpha_Freq = paste0("Alpha", i)
+
+print(ggplot(data=dplyr::filter(Epoch_List[[i_epoch]], Group=="ONH",!is.na(SNR_plot)), aes(x=SNR_plot))+
+                   
+geom_line(aes(y=get(Theta_Freq),  group=10, linetype='Theta', size=.8),stat="summary", fun=mean)+
+  stat_summary(aes(y=get(Theta_Freq),size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  geom_point(aes( y=get(Theta_Freq), shape="Theta", fill="Theta", size = 4),stat="summary", fun=mean)+
+  
+  geom_point(aes( y=get(Alpha_Freq), shape="Alpha", fill="alpha",size = 4),stat="summary", fun=mean)+       
+  geom_line(aes(y=get(Alpha_Freq),  group=10, linetype='Alpha', size=.8),stat="summary", fun=mean)+
+  stat_summary(aes(y=get(Alpha_Freq),size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  
+  scale_shape_discrete(guide = guide_legend(reverse=TRUE))+
+  scale_shape_manual(values=c(22, 25))+
+  scale_fill_manual(values = c("black", "black"))+
+  scale_linetype_manual(values = c("solid", "solid"))+
+ 
+
+  guides(size=FALSE,linetype=FALSE, shape=guide_legend(title=NULL,override.aes = list(size = 4)))+
+         
+  
+labs(title = paste("ONH", i, "for", epoch_names[i_epoch]))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+ coord_cartesian(ylim=c(-1.25, .8))+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+ theme(legend.text = element_text( size = 18, face = "bold"))+
+theme(legend.position="none")+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8)))
+  }
+}
+```
+
+```{r echo=F}
+for (i_epoch in seq_along(Epoch_List)){
+  
+  for(i in Freq_type){
+  Theta_Freq = paste0("Theta", i)
+  Alpha_Freq = paste0("Alpha", i)
+# OHL
+print(ggplot(data=dplyr::filter(Epoch_List[[i_epoch]], Group=="OHL",!is.na(SNR_plot)), aes(x=SNR_plot))+
+                   
+  geom_line(aes(y=get(Theta_Freq),  group=10, linetype='Theta', size=.8),stat="summary", fun=mean)+
+  stat_summary(aes(y=get(Theta_Freq),size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  geom_point(aes( y=get(Theta_Freq), shape="Theta", size = 4, fill="Theta"),stat="summary", fun=mean)+ 
+  
+               
+  geom_line(aes(y=get(Alpha_Freq),  group=10, linetype='Alpha', size=.8),stat="summary", fun=mean)+
+  stat_summary(aes(y=get(Alpha_Freq),size=.7,width=.2),  geom = "errorbar",fun.data = mean_se)+
+  geom_point(aes( y=get(Alpha_Freq), shape="Alpha", size = 4, fill="Theta"),stat="summary", fun=mean)+     
+  
+  scale_shape_discrete(guide = guide_legend(reverse=TRUE))+
+  scale_shape_manual(values=c(22, 25))+
+  scale_linetype_manual(values = c("solid", "solid"))+
+  scale_fill_manual(values = c("White", "white"))+
+
+  guides(size=FALSE,linetype=FALSE, shape=guide_legend(title=NULL,override.aes = list(size = 4)))+
+         
+  
+labs(title = paste("OHL", i, "for", epoch_names[i_epoch]))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+ coord_cartesian(ylim=c(-1.25, .8))+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+ theme(legend.text = element_text( size = 18, face = "bold"))+
+theme(legend.position="none")+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8)))
+  }
+}
+
+```
+
+
+## Order and Condition Effects 
+
+
+### Theta 
+
+
+```{r,echo=FALSE, eval=FALSE}
+# save for balance power analysis (effect of HL on EEG of speech recog)
+saveRDS(Epoch_List, file = "Epoch_List_CDA.Rds")
+# Save to .csv for JASP
+write.csv(EEG_LE, 'EEG_LE.csv')
+write.csv(PTA_Demo, 'PTA_Demo.csv')
+write.csv(PC_df, 'PC_df.csv')
+
+```
+
+
+
+
+
+
+
+
+#### Individual Theta Power over WIN Conditions
+
+```{r, echo=FALSE, eval=FALSE, results='hide', fig.height = 7, fig.width = 9}
+a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)))+
+    geom_point(color = "blue2", stat="summary", fun=mean)+
+    geom_line(stat="summary", fun=mean, group=10, size=1.2, color="blue2")+
+    stat_summary(  geom = "errorbar",fun.data = mean_se, color="blue3",size=.7, width=.25)+
+  facet_wrap(facets = vars(Sub))+
+    labs(title = "Theta Frequency Power of WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")
+
+a
+
+## http://r-statistics.co/Complete-Ggplot2-Tutorial-Part1-With-R-Code.html
+## colors listed here:http://sape.inf.usi.ch/quick-reference/ggplot2/colour
+
+```
+
+
+
+
+#### Individual  Alpha Power over WIN Conditions
+
+```{r, echo=FALSE, eval=FALSE, results='hide', fig.height = 7, fig.width = 9}
+ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)))+
+    geom_point(color = "green3", stat="summary", fun=mean)+
+    geom_line(stat="summary", fun=mean, group=10, size=1.2, color="green3")+
+    stat_summary(  geom = "errorbar",fun.data = mean_se, color="green4",size=.7, width = .25)+
+  facet_wrap(facets = vars(Sub))+
+    labs(title = "Individual Alpha Frequency Power")+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")
+
+## http://r-statistics.co/Complete-Ggplot2-Tutorial-Part1-With-R-Code.html
+## colors listed here:http://sape.inf.usi.ch/quick-reference/ggplot2/colour
+
+```
+
+
+
+## Main Effect of Response on Theta
+
+```{r, echo=FALSE, eval=FALSE }
+
+# Test for a main effect of response; note the use of the complete dataset
+Theta_Cond <- lme((Theta) ~ Condition, random=~1|Sub,
+          data=filter(EEG_LE, Response != "NA"), method="ML")
+
+Theta_Cond_Response<- lme((Theta) ~ Condition+Response, random=~1|Sub,
+          data=filter(EEG_LE, Response != "NA"), method="ML")
+T_Result=anova(Theta_Cond, Theta_Cond_Response)
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:2,color = "black")
+rm(T_Result,Theta_Cond, Theta_Cond_Response)
+```
+
+## Interaction of Condition and Response in Theta
+
+```{r, echo=FALSE, eval=FALSE}
+# Test for the interaction of condition*response vs maineffects only model
+#   note the use of filter() to select cases where Response is not "NoRes" and Condition
+#   is not "24dB". This is required because there are empty cells in the crosstabulation and
+#   therefore the interaction is undefined.
+Theta_ConRes_Main <- lme((Theta) ~ Condition+Response, random=~1|Sub,
+          data=filter(EEG_LE, Response != "NoRes"| Response != "NA"| Condition != "24"), method="ML")
+
+Theta_ConRes_Inter <- lme((Theta) ~ Condition*Response, random=~1|Sub,
+          data=filter(EEG_LE, Response != "NoRes"| Response != "NA"| Condition != "24"), method="ML")
+T_Result=anova(Theta_ConRes_Main, Theta_ConRes_Inter)
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:2,color = "black")
+rm(T_Result)
+# No interaction
+```
+
+## Main Effect of Response on Alpha
+
+```{r, echo=FALSE, eval=FALSE}
+
+# Test for a main effect of response; note the use of the complete dataset
+Alpha_Cond <- lme((Alpha) ~ Condition, random=~1|Sub,
+          data=filter(EEG_LE, Response != "NA"), method="ML")
+
+Alpha_Cond_Response<- lme((Alpha) ~ Condition+Response, random=~1|Sub,
+          data=filter(EEG_LE, Response != "NA"), method="ML")
+T_Result=anova(Alpha_Cond, Alpha_Cond_Response)
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:2,color = "black")
+rm(T_Result,Alpha_Cond, Alpha_Cond_Response)
+```
+## Theta by Response
+```{r, echo=FALSE, results='hide', eval=FALSE}
+All_Freq_Plot=ggplot()+
+ 
+    
+    geom_line(data=dplyr::filter(EEG_LE, Response =='Cor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)), 
+              stat="summary", fun=mean, group=10, size=1.3,linetype = "solid")+
+    stat_summary(data=dplyr::filter(EEG_LE, Response =='Cor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)), 
+                    geom = "errorbar",fun.data = mean_se, size=1, width = .2)+
+  geom_point(data=dplyr::filter(EEG_LE, Response =='Cor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)), 
+               shape = 25, fill= "black", stat="summary", fun=mean, size=4)+
+  
+
+    geom_line(data=dplyr::filter(EEG_LE, Response =='InCor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)),
+              stat="summary", fun=mean, group=10, size=1.3, linetype = "solid")+
+    stat_summary(data=dplyr::filter(EEG_LE, Response =='InCor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)),
+                    geom = "errorbar",fun.data = mean_se, size=1, width=.2)+  
+    geom_point(data=dplyr::filter(EEG_LE, Response =='InCor', !is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)),
+               shape = 25, fill= "white", stat="summary", fun=mean, size=4)+
+
+    
+  
+      #labs(title = "Theta Frequency Power for Correct and Incorrect")+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+ #coord_cartesian(ylim=c(-2, .5))+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))
+print(All_Freq_Plot)
+```
+
+
+
+
+## Theta Correct Response Only - Effect of SNR
+
+```{r, echo=FALSE, eval=FALSE}
+# Low Theta
+Theta_NoCon <- lme((Theta) ~ 1, random=~1|Sub,
+          data=filter(EEG_LE, Response == 'Cor', Response != "NA"), method="ML")
+
+Theta_Con <- lme((Theta) ~ Condition, random=~1|Sub,
+          data=filter(EEG_LE, Response == 'Cor', Response != "NA"), method="ML")
+
+Theta_ConRun <- lme((Theta) ~ Condition*Run, random=~1|Sub,
+          data=filter(EEG_LE, Response == 'Cor', Response != "NA"), method="ML")
+T_Result= anova(Theta_NoCon, Theta_Con, Theta_ConRun)
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:3,color = "black")
+rm(T_Result)
+# Shows effect of Condition, No Effect of Run(WIN_1-WIN_R2)
+
+#summary(Cond)
+T_Result=prettify(summary(Theta_Con) )
+
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:7,color = "black")
+rm(T_Result)
+```
+
+## Alpha by Response
+```{r, echo=FALSE, results='hide', eval=FALSE}
+All_Freq_Plot=ggplot()+
+ 
+    
+    geom_line(data=dplyr::filter(EEG_LE, Response =='Cor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)), 
+              stat="summary", fun=mean, group=10, size=1.3, linetype = "solid")+
+    stat_summary(data=dplyr::filter(EEG_LE, Response =='Cor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)), 
+                    geom = "errorbar",fun.data = mean_se, size=1, width = .2)+
+    geom_point(data=dplyr::filter(EEG_LE, Response =='Cor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)), 
+               shape = 22, fill= "black", stat="summary", fun=mean, size=5)+
+  
+  
+    geom_line(data=dplyr::filter(EEG_LE, Response =='InCor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)),
+              stat="summary", fun=mean, group=10, size=1.3, linetype = "solid")+
+    stat_summary(data=dplyr::filter(EEG_LE, Response =='InCor',!is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)),
+                    geom = "errorbar",fun.data = mean_se, size=1, width=.2)+
+    geom_point(data=dplyr::filter(EEG_LE, Response =='InCor', !is.na(SNR_plot)), aes(x=SNR_plot, y=(Alpha)),
+              shape = 22, fill= "white",stat="summary", fun=mean, size=5)+
+
+    
+  
+      #labs(title = "Alpha Frequency Power for Correct and Incorrect")+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
+  theme_classic()+
+ #coord_cartesian(ylim=c(-2, .5))+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))
+print(All_Freq_Plot)
+```
+
+## Alpha Correct Response Only - Effect of SNR
+
+```{r, echo=FALSE, eval=FALSE}
+# Low Alpha
+LA_NoCon <- lme((Alpha) ~ 1, random=~1|Sub,
+          data=filter(EEG_LE, Response == 'Cor', Response != "NA"), method="ML")
+
+LA_Con <- lme((Alpha) ~ Condition, random=~1|Sub,
+          data=filter(EEG_LE, Response == 'Cor', Response != "NA"), method="ML")
+
+LA_ConRun <- lme((Alpha) ~ Condition*Run, random=~1|Sub,
+          data=filter(EEG_LE, Response == 'Cor', Response != "NA"), method="ML")
+T_Result= anova(LA_NoCon, LA_Con, LA_ConRun)
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:3,color = "black")
+rm(T_Result)
+# Shows effect of Condition, No Effect of Run(WIN_1-WIN_R2)
+
+#summary(Cond)
+T_Result=prettify(summary(LA_Con) )
+
+kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(1:7,color = "black")
+rm(T_Result)
+```
+
+
+
+
+### Correlations for the WIN Task 
+
+```{r echo=FALSE, warning=FALSE, eval=FALSE}
+
+#####
+# First average Freq of each condition:
+EEG_LE_Avg= EEG_LE%>%dplyr::group_by(Sub,Run,Condition)%>%dplyr::summarise(Theta =mean((Theta)), Alpha = mean((Alpha)))
+# mearge data sets
+EEG_PC_SR = merge(EEG_LE_Avg, PC_SR, all=T)
+
+## colapse across Run???
+#  try what this post said: https://stackoverflow.com/questions/31060105/dplyr-dealing-with-nas-while-calculating-mean-summarize-each-on-group-by-obje
+# Notice the %<>% to replace data that is entered...
+EEG_PC_SR%<>%group_by(Sub, Condition)%>% summarise_each(funs(mean(., na.rm = TRUE)))
+
+# remove Run column
+EEG_PC_SR=within(EEG_PC_SR,rm(Run))
+
+# # Split Baseline from WIN 
+# EEG_Baseline=EEG_PC_SR%>%dplyr::select(Sub,Condition, Theta, Alpha, ILE, RLE, LISN.Correct) %>%
+#   dplyr::filter(Condition %in% c("Eyes_Open", "Eyes_Closed", "Countdown", "LISN"))
+
+EEG_WIN=EEG_PC_SR%>%dplyr::select(Sub,Condition, Theta, Alpha, ILE, RLE, WIN_Score) %>%
+  dplyr::filter(Condition %in% c("24", "20", "16", "12", "8", "4", "0"))
+EEG_WIN$SNR_plot <- factor(EEG_WIN$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+EEG_WIN["Proxy"]=0
+# # spread one key across multiple value columns 
+# # https://community.rstudio.com/t/spread-with-multiple-value-columns/5378
+# EEG_Baseline= EEG_Baseline%>%gather(variable, value, -(Sub:Condition))%>%
+#                             unite(temp, Condition, variable)%>%
+#                             spread(temp, value)
+# # remove columns filled with NA
+# EEG_Baseline= EEG_Baseline%>% select_if(~sum(!is.na(.)) > 0)
+# colnames(EEG_Baseline)[colnames(EEG_Baseline)=="LISN_LISN.Correct"] = "LISN.Correct"
+
+#merge with PTA Demo
+EEG_WIN_PTA=merge(EEG_WIN, PTA_Demo)
+# EEG_Baseline_PTA=merge(EEG_Baseline, PTA_Demo)
+
+#reorder Baseline
+# EEG_Baseline_PTA=EEG_Baseline_PTA[, c("Sub", "Countdown_Alpha", "Countdown_Theta",  "Eyes_Closed_Alpha", "Eyes_Closed_Theta",  "Eyes_Open_Alpha", "Eyes_Open_Theta",  "LISN_Alpha", "LISN_Theta", "LISN_ILE","LISN_RLE", "LISN.Correct","Age", "Education", "MoCA", "PTA", "HF_PTA", "Gender", "Handedness")]
+```
+
+
+```{r echo=FALSE, warning=FALSE, eval=FALSE}
+ if (thisAnalysis == "word"){
+# apa.cor.table(EEG_WIN[,c(-1,-2,-9)], table.number = 1)
+if (html_tables ==F){
+# prep
+  } else {
+    Result = corr.test(dplyr::select (EEG_WIN_PTA, Theta, Alpha, ILE, RLE, WIN_Score, Age,
+                                                   Education, MoCA, PTA, HF_PTA) , adjust = "BH")
+# try to bold <.05
+ResultR=data.frame(Result$r)
+# Round to 3rd decimal place
+ResultR=round(ResultR,3)
+ResultR[ResultR==0]<-0.0001
+
+ResultR%>%
+  mutate(
+    Measure = row.names(.),
+    Theta = cell_spec(Theta, "html", 
+                                    bold = ifelse(abs(Theta) > 0.3, T, F)),
+    Alpha = cell_spec(Alpha , "html", 
+                                    bold = ifelse(abs(Alpha)  > 0.3,  T, F)),
+   
+    ILE = cell_spec(ILE , "html", 
+                                    bold = ifelse(abs(ILE)  > 0.3,  T, F)),
+    RLE = cell_spec(RLE , "html", 
+                                    bold = ifelse(abs(RLE)  > 0.3,  T, F)),    
+    WIN_Score = cell_spec(WIN_Score , "html", 
+                                    bold = ifelse(abs(WIN_Score)  > 0.3,  T, F)),
+    Age = cell_spec(Age , "html", 
+                                    bold = ifelse(abs(Age)  > 0.3,  T, F)),       
+    Education  = cell_spec(Education , "html", 
+                                    bold = ifelse(abs(Education)  > 0.3,  T, F)),
+    MoCA = cell_spec(MoCA , "html", 
+                                    bold = ifelse(abs(MoCA)  > 0.3,  T, F)),
+    PTA = cell_spec(PTA , "html", 
+                                    bold = ifelse(abs(PTA)  > 0.3,  T, F)),       
+    HF_PTA  = cell_spec(HF_PTA , "html", 
+                                    bold = ifelse(abs(HF_PTA)  > 0.3,  T, F))
+      ) %>%
+ dplyr::select(Measure, Theta, Alpha,ILE,RLE,WIN_Score,Age,Education,MoCA,PTA,HF_PTA) %>%
+  kable(format = "html", escape = F ) %>%
+  kable_styling( full_width = F, fixed_thead = T)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(ResultR),color = "black")
+  }
+ }else{}
+```
+
+The table shows the r values of WIN measures and participant demographics. Correlation values > 0.3 (weak correlation) are bolded. 
+
+```{r echo=FALSE, warning=FALSE, eval=FALSE}
+ if (thisAnalysis == "word"){
+if (html_tables ==F){
+
+  } else {
+# try to bold <.05
+ResultP=data.frame(Result$p)
+# Round to 3rd decimal place
+ResultP[ResultP<0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000001
+]=1
+ResultP=round(ResultP,3)
+ResultP[ResultP ==0.000]= 0.0001
+
+ResultP%>%
+  mutate(
+    Measure = row.names(.),
+    Theta = cell_spec(Theta, "html", 
+                                    bold = ifelse(Theta < 0.05, T, F)| Theta==1,T,F),
+    Alpha = cell_spec(Alpha , "html", 
+                                    bold = ifelse(Alpha  < 0.05,  T, F)|Alpha==1,T,F),
+   
+    ILE = cell_spec(ILE , "html", 
+                                    bold = ifelse(ILE  < 0.05,  T, F)|ILE==1,T,F),
+    RLE = cell_spec(RLE , "html", 
+                                    bold = ifelse(RLE  < 0.05,  T, F)|RLE==1,T,F),    
+    WIN_Score = cell_spec(WIN_Score , "html", 
+                                    bold = ifelse(WIN_Score  < 0.05,  T, F)|WIN_Score==1,T,F),
+    Age = cell_spec(Age , "html", 
+                                    bold = ifelse(Age  < 0.05,  T, F)|Age==1,T,F),       
+    Education  = cell_spec(Education , "html", 
+                                    bold = ifelse(Education  < 0.05,  T, F)|Education==1,T,F),
+    MoCA = cell_spec(MoCA , "html", 
+                                    bold = ifelse(MoCA  < 0.05,  T, F)|MoCA==1,T,F),
+    PTA = cell_spec(PTA , "html", 
+                                    bold = ifelse(PTA  < 0.05,  T, F)|PTA==1,T,F),       
+    HF_PTA  = cell_spec(HF_PTA , "html", 
+                                    bold = ifelse(HF_PTA  < 0.05,  T, F)|HF_PTA==1,T,F)
+      ) %>%
+ dplyr::select(Measure, Theta, Alpha,ILE,RLE,WIN_Score,Age,Education,MoCA,PTA,HF_PTA) %>%
+  kable(format = "html", escape = F ) %>%
+  kable_styling( full_width = F, fixed_thead = T)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(ResultP),color = "black")
+  }
+ }else{}
+# kable Help: https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
+
+```
+
+
+The table shows the adjusted (Benjamini-Hochberg) *p* values above the diagonal "1"s and unadjusted *p* values below, *p* values < 0.05 are bolded.
+
+
+### Preliminary Proxy Measure
+
+```{r, echo=FALSE, results='hide', fig.height = 4, fig.width = 6, eval=FALSE}
+ if (thisAnalysis == "word"){
+PC_SelfReport_plot=
+  ggplot()+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+              size=3,stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+              stat="summary", fun=mean, group=10, size=1.2)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+                  geom = "errorbar",fun.data = mean_se, color="grey20",size=.7, width=.25)+
+  
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE), color="goldenrod1",
+               size = 3, stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, size=1.2, color="goldenrod1")+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, color="goldenrod",size=.7,width=.25)+
+  
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE), color="salmon",
+              shape=17, size = 3, stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, size=1.2, color="salmon")+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, color="salmon1",size=.7,width=.25)+
+  scale_y_continuous (breaks = (0:9))+theme_classic()+
+  #labs(title = "Self-Reported Effort and Performance WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("Self-Report and Word Rec *2")
+
+
+
+print(PC_SelfReport_plot)
+}else{}
+```
+
+Words Recognized (x2 to match scaling) in black, the RLE in gold, and the performance correct ILE in salmon. It seems that a person can only put forth so much effort into a task as conditions would allow for "good" performance. Once conditions deteriorate and performance declines, effort applied to the task could decline as well. This is not what we observe in this data. We can see that self-reported effort continues to increase as performance declines. I presume this increase is not due to more effort being applied to the task, but a reflection of effort applied in a difficult/futile task (maybe frustration?).
+
+```{r, echo=FALSE, results='hide', fig.height = 4, fig.width = 6}
+
+#print(LAPP)
+```
+
+If we are to assume that low-frequency alpha is a measure of cognitive inhibition and a further reflection of cognitive resources applied to the task, then self-reported effort should more closely resemble the inverted U-shape of low-frequency alpha power. 
+
+```{r, echo=FALSE, results='hide', warning=FALSE, eval=FALSE}
+#### Individual Plots Script can start here....
+
+# Reshape RLE to look like LA using PC
+
+#################### Prep variable from above:
+# First average Freq of each condition:
+EEG_LE_Avg= EEG_LE%>%dplyr::group_by(Sub,Run,Condition)%>%dplyr::summarise(Theta =mean((Theta)), Alpha = mean((Alpha)))
+# mearge data sets
+EEG_PC_SR = merge(EEG_LE_Avg, PC_SR, all=T)
+
+## colapse across Run
+#  try what this post said: https://stackoverflow.com/questions/31060105/dplyr-dealing-with-nas-while-calculating-mean-summarize-each-on-group-by-obje
+# Notice the %<>% to replace data that is entered...
+EEG_PC_SR%<>%group_by(Sub, Condition)%>% summarise_each(funs(mean(., na.rm = TRUE)))
+
+# remove Run column
+EEG_PC_SR=within(EEG_PC_SR,rm(Run))
+
+# Split Baseline from WIN 
+EEG_WIN=EEG_PC_SR%>%dplyr::select(Sub,Condition, Theta, Alpha,  ILE, RLE, WIN_Score) %>%
+  dplyr::filter(Condition %in% c("24", "20", "16", "12", "8", "4", "0"))
+EEG_WIN$SNR_plot <- factor(EEG_WIN$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+EEG_WIN["Proxy"]=0
+#################### Prep Complete
+```
+
+By taking the number of words not recognized in a condition (e.g. 5 - WIN_Score, [WIN_Score is the mean correct out of 5] ) then multiplying by 2 (to match the 10 point scale of the self-reported listening effort), then subtracting from the Invested Listening Effort score (ILE) for that condition yields a "performance corrected effort" score. 
+
+* Performance Corrected Effort = ILE - (2 * (5 - WIN_Score))
+
+```{r, echo=FALSE, results='hide', fig.height = 4, fig.width = 5, eval=FALSE}
+# Alternate Proxy score 1 (ILE = col 6, RLE=col 7)
+EEG_WIN$Proxy=EEG_WIN$ILE -(2* (5- EEG_WIN$WIN_Score))
+#EEG_WIN_PTA$Proxy=EEG_WIN$Proxy
+
+# find 1st derivative of Proxy
+EEG_WIN$Deriv_Proxy=0
+EEG_WIN_Reorder=EEG_WIN%>% arrange(Condition)
+EEG_WIN_Reorder$Deriv_Proxy=pracma::gradient(EEG_WIN_Reorder$Proxy, h1=1)
+
+
+# Alternate Proxy score 2 
+#for(i in 1:nrow(EEG_WIN)){
+#if (EEG_WIN[i,8] > 4){
+#  EEG_WIN[i,10]=EEG_WIN[i,6]+(10*(5-EEG_WIN[i,8]))
+#  } else {
+#    EEG_WIN[i,10]=EEG_WIN[i,6] -(2* (5- EEG_WIN[i,8]))
+#  }
+#}
+
+# Alternate Proxy score 3
+#for(i in 1:nrow(EEG_WIN)){
+#if(EEG_WIN[i,8] >4.2){
+#  EEG_WIN[i,10]=EEG_WIN[i,6]+(20*(5-EEG_WIN[i,8]))
+#  } else {
+#    EEG_WIN[i,10]=EEG_WIN[i,6] -(2* (5- EEG_WIN[i,8]))
+#  }
+#}
+IndvidualPerCorrPlot=
+  ggplot()+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+              size=3,stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+              stat="summary", fun=mean, group=10, size=1.2)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+                  geom = "errorbar",fun.data = mean_se, color="grey20",size=.7, width=.25)+
+ 
+  geom_point(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=ILE), color="salmon",
+               size = 3, stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, size=1.2, color="salmon")+
+  stat_summary(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, color="salmon1",size=.7,width=.25)+
+  
+  geom_point(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=Proxy), color="darkmagenta",
+              shape=17, size = 3, stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=Proxy),
+              stat="summary", fun=mean, group=10, size=1.2, color="darkmagenta")+
+  stat_summary(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=Proxy),
+                  geom = "errorbar",fun.data = mean_se, color="darkmagenta",size=.7,width=.25)+
+  
+  geom_point(data=dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(2^((Alpha)))), color = "green3", 
+             stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(2^((Alpha)))),
+             stat="summary", fun=mean, group=10, size=1.2, color="green3")+
+  stat_summary(data=dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(2^((Alpha)))),
+                  geom = "errorbar",fun.data = mean_se, color="green4",size=.7, width = .25)+
+             
+             
+   facet_wrap(facets = vars(Sub))+
+  scale_y_continuous (breaks = (0:9))+theme_classic()+
+  #labs(title = "Performance Corrected Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("Self-Report and Word Rec *2")
+######### Printed in Sup. Data
+
+PC_SelfReport_plot=
+  ggplot()+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+              size=3,stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+              stat="summary", fun=mean, group=10, size=1.2)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=2*(WIN_Score)),
+                  geom = "errorbar",fun.data = mean_se, color="grey20",size=.7, width=.25)+
+ 
+  geom_point(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=ILE), color="salmon",
+               size = 3, stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, size=1.2, color="salmon")+
+  stat_summary(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, color="salmon1",size=.7,width=.25)+
+  
+  geom_point(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=Proxy), color="darkmagenta",
+              shape=17, size = 3, stat="summary", fun=mean)+
+  geom_line (data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=Proxy),
+              stat="summary", fun=mean, group=10, size=1.2, color="darkmagenta")+
+  stat_summary(data=dplyr::filter(EEG_WIN, Condition != "LISN"), aes(x=SNR_plot, y=Proxy),
+                  geom = "errorbar",fun.data = mean_se, color="darkmagenta",size=.7,width=.25)+
+  scale_y_continuous (breaks = (0:9))+theme_classic()+
+  #labs(title = "Performance Corrected Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("Self-Report and Word Rec *2")
+print(PC_SelfReport_plot)
+
+```
+
+Words Recognized (x2 to match scaling) in black, the ILE in salmon, and the performance correct ILE in purple.
+
+The curve of the performance corrected ILE line has begun to take on the shape of alpha frequency power in more difficult SNR. There still needs to be work done to make this a proxy measure of alpha frequency power, an increase in easier SNR is needed to reflect the increase of cognitive inhibition (alpha frequency power) required to maintain ceiling performance. 
+
+Individual plots of Performance Corrected Listening Effort over WIN SNR are at the end of the Supplemental Data. 
+
+### Non-Linear Model Approach
+
+Matt McBee and I did some work with non-linear modeling to development a proxy measure. The idea was similar to the above approach (subtract the number of words incorrect from the self-reported invested effort), except in a non-linear model using number of words incorrect and self-reported invested effort as predictors of low-frequency alpha. 
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, eval=FALSE}
+ if (thisAnalysis == "word"){
+# first, put together a dataframe with the average EEG values and average listening effort values
+
+# this frame will be called summary_df
+
+summary.EEG <- EEG_LE %>% dplyr::filter(!is.na(SNR_plot)) %>% dplyr::select(SNR_plot, Alpha) %>% group_by(SNR_plot) %>% dplyr::summarize(Alpha=mean((Alpha), na.rm=T))
+
+summary.effort <- EEG_WIN %>% dplyr::filter(!is.na(SNR_plot)) %>% dplyr::select(SNR_plot, ILE, RLE, WIN_Score) %>% group_by(SNR_plot) %>% dplyr::summarize(ILE=mean(ILE, na.rm=T), RLE=mean(RLE, na.rm=T), WIN_Score=mean(WIN_Score, na.rm=T))
+
+# merge the EEG and effort dataframes, matching on the SNR_plot values
+summary_df <- merge(summary.EEG, summary.effort, by="SNR_plot")
+# str(summary_df)
+
+# sort the data in order of SNR
+summary_df$SNR <- as.numeric(summary_df$SNR_plot)
+summary_df <- summary_df[order(summary_df$SNR),]
+
+# try regression: epic failure
+# (code maintained for posterity but commented out)
+# a <- lm(Alpha ~ ILE*WIN_Score, data=summary_df) 
+# predict(a)
+# plot(predict(a), type='l')
+
+# define an objective function to predict Low Alpha from ILE and Win_Score
+# the prediction equation is c + (a*ILE) - (b*(5-Win_Score))
+# given values of a, b, c, and some data, this function returns the residuals (prediction errors
+fitit <- function(par, data) {
+  y <- data$Alpha - (par[3]+ ((par[1]*data$ILE)-(par[2]*(5-data$WIN_Score))))
+  return(y)
+}
+
+# test the function
+fitit(par=c(-.5, 0,0), data=summary_df)
+
+# use nonlinear fitting to estimate parameters a, b, and c
+# (note: must install minpack.lm package)
+# save results in object 'fit'
+#   fit$par contains the estimated coefficients
+fit <- minpack.lm::nls.lm(par=c(-.5, 0, 0), fn=fitit, data=summary_df)
+summary(lm(Alpha ~ ILE + I(5-(WIN_Score)), data = summary_df))
+
+
+
+# calculate predicted alpha using the values estimated by nls.lm()
+#  IMPORTANT: THIS FUNCTION MUST MATCH WHAT IS IN THE 'fitit' FUNCTION
+summary_df$pred_Alpha <- fit$par[3]+((fit$par[1]*summary_df$ILE) - (fit$par[2]*(5-summary_df$WIN_Score)))
+
+# plot actual vs predicted Low Alpha
+
+#with(summary_df, plot(x=SNR, y=Alpha, type="b", col="red", ylim=c(-1.5, -.5)))
+#with(summary_df, points(x=SNR, y=pred_Alpha, type="b", col="blue"))
+
+Proxy=
+  ggplot()+
+  geom_point(data=summary_df, aes(x=SNR, y=Alpha),
+              size=3, color="green3")+
+  geom_line (data=summary_df, aes(x=SNR, y=Alpha),
+             group=10, size=1.2, color="green3")+
+  
+  geom_point(data=summary_df, aes(x=SNR, y=pred_Alpha), color="darkmagenta",
+              shape=17, size = 3)+
+  geom_line (data=summary_df, aes(x=SNR, y=pred_Alpha),
+              group=10, size=1.2, color="darkmagenta")+
+    scale_y_continuous (breaks = (0:9))+theme_classic()+
+  scale_x_continuous (breaks = (1:7))+
+  labs(title = "Proxy Measure of Low-Frequency Alpha")+ 
+    scale_y_continuous (breaks = (.5))+theme_classic()+
+     xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("Frequency Power")
+print(Proxy)
+###
+
+# print estimated values of a, b, and c to console
+fit$par
+}else{}
+```
+
+The non-linear model produces a line (purple) similar in shape and scale to the low-frequency alpha power (green); however, the shape of the non-linear model line is a similar shape to the previous approach above. Further testing will be required to develop a more accurate proxy measure. 
+
+***
