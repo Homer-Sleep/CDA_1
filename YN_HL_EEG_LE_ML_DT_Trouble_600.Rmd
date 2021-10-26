@@ -86,6 +86,9 @@ PTA_Demo_Raw=as.data.frame(read_excel(paste0(Behav_path, "EEG_LE_CDA_Data.xlsx")
 PTA_Demo_Raw = dplyr::filter(PTA_Demo_Raw, Group %in% c("OHL","ONH", "YN"))
 PTA_Demo_Raw[PTA_Demo_Raw == ""] = NA # empty cells are NA
 PTA_Demo_Raw = Filter(function(x)!all(is.na(x)),PTA_Demo_Raw) # remove columns that are NA
+PTA_Demo_Raw = PTA_Demo_Raw[,-c(147:149)]
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="R LE LISN"] = "LISN__RLE"
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="I LE LISN"] = "LISN__ILE"
 
 colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="Subj#"] = "Sub"
 colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="MoCA Raw Score"] = "MoCA"
@@ -111,9 +114,6 @@ PC_SR = PTA_Demo_Raw[,c(1:5,39:146)]
 
 # ## load in Self-Reprot and PC data
 
-# rename to help with sep=6
-colnames(PC_SR)[colnames(PC_SR)=="R LE LISN"] = "LISN__RLE"
-colnames(PC_SR)[colnames(PC_SR)=="I LE LISN"] = "LISN__ILE"
 # convert to long format and split on 6th char in Variable names
 # using this example: https://stackoverflow.com/questions/25272018/split-column-name-and-convert-data-from-wide-to-long-format-in-r
 # and this for help: https://ademos.people.uic.edu/Chapter9.html
@@ -254,12 +254,7 @@ EpochRM=setNames(data.frame(matrix(ncol = 3, nrow = 13)), c("Condition", "Num_RM
     
   }
     
-  # # print table of baseline condition epochs removed
-  # 
-  # print(kable(EpochRM_List[[3]][1:5,])%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
-  # column_spec(1,color="black", bold=T)%>%
-  # row_spec(0:5,color = "black"))
-  
+
   # print table of WIN condition epochs removed
 
   RMtable=  kable(EpochRM_List[[1]][6:13,], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
@@ -271,10 +266,10 @@ EpochRM=setNames(data.frame(matrix(ncol = 3, nrow = 13)), c("Condition", "Num_RM
      # Remove over Threshold   
   Channels = c('FzMaxAmp', 'PzMaxAmp', 'F3MaxAmp', 'P3MaxAmp', 'F4MaxAmp', 'P4MaxAmp')
   
+  test = Epoch_List
    for (i in seq_along(Epoch_List)){
-    for (ii in seq_along(Channels)){
-        Epoch_List[[i]] = (dplyr::filter(Epoch_List[[i]], get(Channels[ii])<Threshold )) # use get() to use str as var name!
-    }
+     Epoch_List[[i]]= Epoch_List[[i]][FzMaxAmp<Threshold & PzMaxAmp<Threshold & F3MaxAmp<Threshold & P3MaxAmp<Threshold &
+                                        F4MaxAmp<Threshold & P4MaxAmp<Threshold]
    }
   
 
@@ -519,7 +514,7 @@ print(ggplot(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot)),
       labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
     # ylab(bquote(PSD==10~"*"~log[10](µV^2*"/"~Hz)))
-  coord_cartesian(ylim=c(-.3, .4))+
+  # coord_cartesian(ylim=c(-.3, .4))+
 plot_finish
 )
 }
@@ -558,7 +553,7 @@ for (Sub.i in seq_along(Subjects)) {
    geom_point(aes(x=SNR_plot, y=(PerCor/10)), size=4, stat="summary", fun=mean)+
    geom_line(aes(x=SNR_plot, y=(PerCor/10)),stat="summary", fun=mean, group=10, size=2)+
   stat_summary(aes(x=SNR_plot, y=(PerCor/10)), geom = "errorbar", fun.data = mean_se, position = "dodge", color="black",size=.8, width=.4)+
-  
+  labs(title = paste(Subjects[Sub.i], Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
   plot_finish)
 
 
@@ -576,7 +571,7 @@ print(ggplot(data=dplyr::filter(Freq_plot, !is.na(SNR_plot),Sub ==  Subjects[Sub
    scale_fill_manual(values = Mycolors)+
          
   
-      labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+      labs(title = paste(Subjects[Sub.i], Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
     # ylab(bquote(PSD==10~"*"~log[10](µV^2*"/"~Hz)))
   # coord_cartesian(ylim=c(-.3, .4))+
@@ -602,17 +597,17 @@ compare alpha to performance and self-report? when does self-report go up exp?
 
 ```{r echo=FALSE, warning=FALSE}
 # EEG_WIN_PTA=Epoch_List
-EEG_WIN_PTA_ML = Epoch_List
+EEG_WIN_PTA_ML = list()
 
 for (i in seq_along(Epoch_List)){
   
 #####
 # First average Freq of each condition:
 EEG_LE_Avg= Epoch_List[[i]]%>%dplyr::group_by(Sub,Run,Condition, SNR)%>%dplyr::summarise(Theta =mean((Theta)), Alpha = mean((Alpha)))
-# mearge data sets
+# merge data sets
 EEG_PC_SR = merge(EEG_LE_Avg, PC_SR, all=T)
 
-## colapse across Run???
+## collapse across Run???
 #  try what this post said: https://stackoverflow.com/questions/31060105/dplyr-dealing-with-nas-while-calculating-mean-summarize-each-on-group-by-obje
 # Notice the %<>% to replace data that is entered...
 EEG_PC_SR%<>%group_by(Sub, Condition)%>% summarise_each(funs(mean(., na.rm = TRUE)))
@@ -629,20 +624,20 @@ EEG_WIN=EEG_PC_SR%>%dplyr::select(Sub,Condition, SNR,Theta, Alpha, ILE, RLE, WIN
 EEG_WIN$SNR_plot <- factor(EEG_WIN$Condition, levels=c("24","20","16","12", "8", "4","0")) 
 
 # Subjective addition Effort
-EEG_WIN$SAE =  (EEG_WIN$ILE - EEG_WIN$RLE)
+# EEG_WIN$SAE =  (EEG_WIN$ILE - EEG_WIN$RLE)
 
 # Performance Corrected Effort
-EEG_WIN$PCE=EEG_WIN$ILE -(2* (5- EEG_WIN$WIN_Score))
+# EEG_WIN$PCE=EEG_WIN$ILE -(2* (5- EEG_WIN$WIN_Score))
 
 # SNR and Performance (Neuroeconomic )
 
 EEG_WIN$SNR_num = as.numeric(as.character( EEG_WIN$Condition))
 
-EEG_WIN$SNR_inver = abs( EEG_WIN$SNR_num - 24)
-EEG_WIN$Neuroeconomic =((EEG_WIN$SNR_inver/2.4) - (2* (5- EEG_WIN$WIN_Score))) + EEG_WIN$SAE
+# EEG_WIN$SNR_inver = abs( EEG_WIN$SNR_num - 24)
+# EEG_WIN$Neuroeconomic =((EEG_WIN$SNR_inver/2.4) - (2* (5- EEG_WIN$WIN_Score))) + EEG_WIN$SAE
 
 # Proxy tests: 
-EEG_WIN$Proxy1=((EEG_WIN$SNR_inver/2.4) - (EEG_WIN$ILE) - (2* (5- EEG_WIN$WIN_Score))) 
+# EEG_WIN$Proxy1=((EEG_WIN$SNR_inver/2.4) - (EEG_WIN$ILE) - (2* (5- EEG_WIN$WIN_Score))) 
 
 
 # # spread one key across multiple value columns 
@@ -665,59 +660,71 @@ EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN,PTA_Demo_Raw)
 using only word epoch, might look at others later. 
 
 ```{r, eval=FALSE}
-EEG.ml = EEG_WIN_PTA_ML[[2]] # just looking at Word epoch
+EEG.ml = as.data.table(EEG_WIN_PTA_ML[[2]]) # just looking at Word epoch 
+setkey(EEG.ml, Sub)
 EEG.ml$Late.Theta = EEG_WIN_PTA_ML[[3]]$Theta # add late theta
-Per.ceiling = 4
+EEG.ml$Group = factor(EEG.ml$Group, levels = c('YN', 'ONH', 'OHL'))
+# Many char columns should be numeric:
+# Get all character columns
+CharacterCols = EEG.ml%>% select_if(is.character)%>%colnames()
+CharacterCols = CharacterCols[c(2,7,10:137)] # limit to everything after Demographics
+EEG.ml[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols] # change the selected columns to numeric
+
+```
+
+```{r, eval=FALSE}
+Per.ceiling = 3.5
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
 SNRs.d1 = seq(20,0, -4)
-EEG.ml$Ceiling.SNR = 0
-EEG.ml$Alpha.d1 = 0
-EEG.ml$LTheta.d1 = 0
-EEG.ml$Alpha.peak = 0
-EEG.ml$LTheta.peak = 0
-EEG.ml$ILE.d1 = 0
-EEG.ml$RLE.d1 = 0
-EEG.ml$Mean.LE.SNR = 0
+Subjects = unique(EEG.ml$Sub)
+# EEG.ml$Ceiling.SNR = as.numeric(NA)
+# EEG.ml$Alpha.d1 = NA
+# EEG.ml$LTheta.d1 = NA
+# EEG.ml$Alpha.peak = NA
+# EEG.ml$LTheta.peak = NA
+# EEG.ml$ILE.d1 = NA
+# EEG.ml$RLE.d1 = NA
+# EEG.ml$Mean.LE.SNR = NA
 for (Sub.i in seq_along(Subjects)) {
   Ceiling.SNR = NULL
   Alpha.d1 = NULL
   LTheta.d1 = NULL
-  Alpha.peak = NULL 
+  Alpha.peak = NULL
   LTheta.peak = NULL
   ILE.d1 = NULL
   RLE.d1 = NULL
   # find the lowest SNR with >= 80% (4/5)
   Ceiling.SNR = min(as.numeric(as.character(unique(EEG.ml[with(EEG.ml,Sub == Subjects[Sub.i] & WIN_Score >=Per.ceiling),]$Condition))))
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Ceiling.SNR = Ceiling.SNR # save to df
+  EEG.ml[Subjects[Sub.i],Ceiling.SNR := (Ceiling.SNR)]  # save to df
   id = SNRs[1:which(SNRs == Ceiling.SNR)] # get seq of ceiling performance SNRs
   
   # find frequency power first derivative with largest change
   Alpha.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)))
                                                             # diff(x)=1 so no need to divide 
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.d1 = SNRs.d1[Alpha.d1]
+  EEG.ml[Subjects[Sub.i], Alpha.d1 := (SNRs.d1[Alpha.d1])] # assign new Alpha 1st derv. 
      
   LTheta.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)))
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.d1 = SNRs.d1[LTheta.d1]
+  EEG.ml[Subjects[Sub.i], LTheta.d1 := (SNRs.d1[LTheta.d1])] 
   
   # find peak frequency power 
   Alpha.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)
                                                             
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.peak = SNRs[Alpha.peak]
+  EEG.ml[Subjects[Sub.i], Alpha.peak := (SNRs[Alpha.peak])]
      
   LTheta.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.peak = SNRs[LTheta.peak]
+  EEG.ml[Subjects[Sub.i], LTheta.peak := (SNRs[LTheta.peak])]
   
    # find self-report first derivative with largest change
   ILE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$ILE)))
                                                             # diff(x)=1 so no need to divide 
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$ILE.d1 = SNRs.d1[ILE.d1]
+  EEG.ml[Subjects[Sub.i], ILE.d1 := (SNRs.d1[ILE.d1])]
      
   RLE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$RLE)))
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$RLE.d1 = SNRs.d1[RLE.d1]
+  EEG.ml[Subjects[Sub.i], RLE.d1 := (SNRs.d1[RLE.d1])] 
  
   # Mean SNR of all above predictors:
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
-                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1)))
+  EEG.ml[Subjects[Sub.i], Mean.LE.SNR := (with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1))))]
 }
 
 hist(EEG.ml$Mean.LE.SNR)
