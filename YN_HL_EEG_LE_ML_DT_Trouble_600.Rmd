@@ -660,31 +660,89 @@ EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN,PTA_Demo_Raw)
 using only word epoch, might look at others later. 
 
 ```{r, eval=FALSE}
-EEG.ml = as.data.table(EEG_WIN_PTA_ML[[2]]) # just looking at Word epoch 
-setkey(EEG.ml, Sub)
-EEG.ml$Late.Theta = EEG_WIN_PTA_ML[[3]]$Theta # add late theta
-EEG.ml$Group = factor(EEG.ml$Group, levels = c('YN', 'ONH', 'OHL'))
+EEG.ml.dt = as.data.table(EEG_WIN_PTA_ML[[2]]) # just looking at Word epoch 
+setkey(EEG.ml.dt, Sub)
+EEG.ml.dt$Late.Theta = EEG_WIN_PTA_ML[[3]]$Theta # add late theta
+EEG.ml.dt$Group = factor(EEG.ml.dt$Group, levels = c('YN', 'ONH', 'OHL'))
 # Many char columns should be numeric:
 # Get all character columns
-CharacterCols = EEG.ml%>% select_if(is.character)%>%colnames()
+CharacterCols = EEG.ml.dt%>% select_if(is.character)%>%colnames()
 CharacterCols = CharacterCols[c(2,7,10:137)] # limit to everything after Demographics
-EEG.ml[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols] # change the selected columns to numeric
+EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols] # change the selected columns to numeric
 
 ```
 
+### Trouble when assigning 0, has length of 0....
+
 ```{r, eval=FALSE}
+EEG.ml = as.data.frame(EEG.ml.dt)
+Per.ceiling = 4
+SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
+SNRs.d1 = seq(20,0, -4)
+EEG.ml$Ceiling.SNR = NA
+EEG.ml$Alpha.d1 = NA
+EEG.ml$LTheta.d1 = NA
+EEG.ml$Alpha.peak = NA
+EEG.ml$LTheta.peak = NA
+EEG.ml$ILE.d1 = NA
+EEG.ml$RLE.d1 = NA
+EEG.ml$Mean.LE.SNR = NA
+for (Sub.i in seq_along(Subjects)) {
+  Ceiling.SNR = NULL
+  Alpha.d1 = NULL
+  LTheta.d1 = NULL
+  Alpha.peak = NULL 
+  LTheta.peak = NULL
+  ILE.d1 = NULL
+  RLE.d1 = NULL
+  # find the lowest SNR with >= 80% (4/5)
+  Ceiling.SNR = min(as.numeric(as.character(unique(EEG.ml[with(EEG.ml,Sub == Subjects[Sub.i] & WIN_Score >=Per.ceiling),]$Condition))))
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Ceiling.SNR = Ceiling.SNR # save to df
+  id = SNRs[1:which(SNRs == Ceiling.SNR)] # get seq of ceiling performance SNRs
+  
+  # find frequency power first derivative with largest change
+  Alpha.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)))
+                                                            # diff(x)=1 so no need to divide 
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.d1 = SNRs.d1[Alpha.d1]
+     
+  LTheta.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)))
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.d1 = SNRs.d1[LTheta.d1]
+  
+  # find peak frequency power 
+  Alpha.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)
+                                                            
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.peak = SNRs[Alpha.peak]
+     
+  LTheta.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.peak = SNRs[LTheta.peak]
+  
+   # find self-report first derivative with largest change
+  ILE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$ILE)))
+                                                            # diff(x)=1 so no need to divide 
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$ILE.d1 = SNRs.d1[ILE.d1]
+     
+  RLE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$RLE)))
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$RLE.d1 = SNRs.d1[RLE.d1]
+ 
+  # Mean SNR of all above predictors:
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1)))
+}
+
+hist(EEG.ml$Mean.LE.SNR)
+##########
 Per.ceiling = 3.5
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
 SNRs.d1 = seq(20,0, -4)
 Subjects = unique(EEG.ml$Sub)
-# EEG.ml$Ceiling.SNR = as.numeric(NA)
-# EEG.ml$Alpha.d1 = NA
-# EEG.ml$LTheta.d1 = NA
-# EEG.ml$Alpha.peak = NA
-# EEG.ml$LTheta.peak = NA
-# EEG.ml$ILE.d1 = NA
-# EEG.ml$RLE.d1 = NA
-# EEG.ml$Mean.LE.SNR = NA
+# EEG.ml.dt$Ceiling.SNR = as.numeric(NA)
+# EEG.ml.dt$Alpha.d1 = NA
+# EEG.ml.dt$LTheta.d1 = NA
+# EEG.ml.dt$Alpha.peak = NA
+# EEG.ml.dt$LTheta.peak = NA
+# EEG.ml.dt$ILE.d1 = NA
+# EEG.ml.dt$RLE.d1 = NA
+# EEG.ml.dt$Mean.LE.SNR = NA
 for (Sub.i in seq_along(Subjects)) {
   Ceiling.SNR = NULL
   Alpha.d1 = NULL
@@ -694,40 +752,40 @@ for (Sub.i in seq_along(Subjects)) {
   ILE.d1 = NULL
   RLE.d1 = NULL
   # find the lowest SNR with >= 80% (4/5)
-  Ceiling.SNR = min(as.numeric(as.character(unique(EEG.ml[with(EEG.ml,Sub == Subjects[Sub.i] & WIN_Score >=Per.ceiling),]$Condition))))
-  EEG.ml[Subjects[Sub.i],Ceiling.SNR := (Ceiling.SNR)]  # save to df
+  Ceiling.SNR = min(as.numeric(as.character(unique(EEG.ml.dt[with(EEG.ml.dt,Sub == Subjects[Sub.i] & WIN_Score >=Per.ceiling),]$Condition))))
+  EEG.ml.dt[Subjects[Sub.i],Ceiling.SNR := (Ceiling.SNR)]  # save to df
   id = SNRs[1:which(SNRs == Ceiling.SNR)] # get seq of ceiling performance SNRs
   
   # find frequency power first derivative with largest change
-  Alpha.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)))
+  Alpha.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)))
                                                             # diff(x)=1 so no need to divide 
-  EEG.ml[Subjects[Sub.i], Alpha.d1 := (SNRs.d1[Alpha.d1])] # assign new Alpha 1st derv. 
+  EEG.ml.dt[Subjects[Sub.i], Alpha.d1 := (SNRs.d1[Alpha.d1])] # assign new Alpha 1st derv. 
      
-  LTheta.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)))
-  EEG.ml[Subjects[Sub.i], LTheta.d1 := (SNRs.d1[LTheta.d1])] 
+  LTheta.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)))
+  EEG.ml.dt[Subjects[Sub.i], LTheta.d1 := (SNRs.d1[LTheta.d1])] 
   
   # find peak frequency power 
-  Alpha.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)
+  Alpha.peak = which.max(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)
                                                             
-  EEG.ml[Subjects[Sub.i], Alpha.peak := (SNRs[Alpha.peak])]
+  EEG.ml.dt[Subjects[Sub.i], Alpha.peak := (SNRs[Alpha.peak])]
      
-  LTheta.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)
-  EEG.ml[Subjects[Sub.i], LTheta.peak := (SNRs[LTheta.peak])]
+  LTheta.peak = which.max(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)
+  EEG.ml.dt[Subjects[Sub.i], LTheta.peak := (SNRs[LTheta.peak])]
   
    # find self-report first derivative with largest change
-  ILE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$ILE)))
+  ILE.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_num %in% id),]$ILE)))
                                                             # diff(x)=1 so no need to divide 
-  EEG.ml[Subjects[Sub.i], ILE.d1 := (SNRs.d1[ILE.d1])]
+  EEG.ml.dt[Subjects[Sub.i], ILE.d1 := (SNRs.d1[ILE.d1])]
      
-  RLE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$RLE)))
-  EEG.ml[Subjects[Sub.i], RLE.d1 := (SNRs.d1[RLE.d1])] 
+  RLE.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$RLE)))
+  EEG.ml.dt[Subjects[Sub.i], RLE.d1 := (SNRs.d1[RLE.d1])] 
  
   # Mean SNR of all above predictors:
-  EEG.ml[Subjects[Sub.i], Mean.LE.SNR := (with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+  EEG.ml.dt[Subjects[Sub.i], Mean.LE.SNR := (with(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i]),], 
                                                                    mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1))))]
 }
 
-hist(EEG.ml$Mean.LE.SNR)
+hist(EEG.ml.dt$Mean.LE.SNR)
 ```
 
 

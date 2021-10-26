@@ -670,14 +670,14 @@ EEG.ml$Late.Theta = EEG_WIN_PTA_ML[[3]]$Theta # add late theta
 Per.ceiling = 4
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
 SNRs.d1 = seq(20,0, -4)
-EEG.ml$Ceiling.SNR = 0
-EEG.ml$Alpha.d1 = 0
-EEG.ml$LTheta.d1 = 0
-EEG.ml$Alpha.peak = 0
-EEG.ml$LTheta.peak = 0
-EEG.ml$ILE.d1 = 0
-EEG.ml$RLE.d1 = 0
-EEG.ml$Mean.LE.SNR = 0
+EEG.ml$Ceiling.SNR = NA
+EEG.ml$Alpha.d1 = NA
+EEG.ml$LTheta.d1 = NA
+EEG.ml$Alpha.peak = NA
+EEG.ml$LTheta.peak = NA
+EEG.ml$ILE.d1 = NA
+EEG.ml$RLE.d1 = NA
+EEG.ml$Mean.LE.SNR = NA
 for (Sub.i in seq_along(Subjects)) {
   Ceiling.SNR = NULL
   Alpha.d1 = NULL
