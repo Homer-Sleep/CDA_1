@@ -23,6 +23,7 @@ library(tidyverse)
 library(randomForest)
 library(glmnet)
 library(readxl)
+library(data.table)
 options(scipen = 999) # turn off scientific notation. 
 
 # set to turn html tables on or off 
@@ -35,11 +36,11 @@ Threshold= 50
 Behav_path = ""
 # ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
 # OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
-ONH_EEG_path <- "\\ONH\\"
+ONH_EEG_path <- "ONH/"
 
-OHL_EEG_path <- "\\OHL\\"
+OHL_EEG_path <- "OHL/"
 
-YN_EEG_path <- "\\YN\\"
+YN_EEG_path <- "YN/"
 
 BaseCon_filename = 'BaseConArray.csv'
 
@@ -168,57 +169,65 @@ summary(PC_SR)
 
 
 ```{r, echo=FALSE,results='asis'}
-## Load EEG data
+## Load EEG data, append each group, make one list of all subjects with group ID:
+Groups = c('YN', 'ONH', 'OHL')
+Epochs = c('Phrase', 'Word', 'Late')
+Phrase_list = list()
+Word_list = list()
+Late_list = list()
 
-EEG_LE_Late =read.csv(Late_filename)
-# EEG_LE_Late = dplyr::filter(EEG_LE_Late, T2 !="NA")
+for (i in Groups) {
+  path = paste(i, "_EEG_path",sep = "")
+  Phrase_list[[i]] = fread(paste0(i,'/', Phrase_filename))
+  Phrase_list[[i]]$Group = i #assign Group name
+  Phrase_list[[i]] = na.omit(Phrase_list[[i]], cols='T2') # remove rows with NA 
+}
+Phrase= rbindlist(Phrase_list) # row bind the lists
 
-EEG_LE_Word =read.csv( Word_filename)
-# EEG_LE_Word = dplyr::filter(EEG_LE_Word, T2 !="NA"& Run != "Baseline")
-# 
-# EEG_LE_PreCon =read.csv(paste0(EEG_path, PreCon_filename))
-# EEG_LE_PreCon = dplyr::filter(EEG_LE_PreCon, T2 !="NA")
+for (i in Groups) {
+  path = paste(i, "_EEG_path",sep = "")
+  Word_list[[i]] = fread(paste0(i,'/', Word_filename))
+  Word_list[[i]]$Group = i #assign Group name
+  Word_list[[i]] = na.omit(Word_list[[i]], cols='T2') # remove rows with NA 
+}
+Word= rbindlist(Word_list) # row bind the lists
 
-# EEG_LE_PrePhrase =read.csv(paste0(EEG_path , PrePhrase_filename))
-# EEG_LE_PrePhrase = dplyr::filter(EEG_LE_PrePhrase, T2 !="NA" & Run != "Baseline")
+for (i in Groups) {
+  path = paste(i, "_EEG_path",sep = "")
+  Late_list[[i]] = fread(paste0(i,'/', Late_filename))
+  Late_list[[i]]$Group = i #assign Group name
+  Late_list[[i]] = na.omit(Late_list[[i]], cols='T2') # remove rows with NA 
+}
+Late= rbindlist(Word_list) # row bind the lists
+# Epoch list of all EEG data
+Epoch_List_Raw = list('Phrase'= Phrase, 'Word' = Word, 'Late' = Late)
+# rm unused data:
+rm(Phrase, Phrase_list, Word, Word_list, Late, Late_list)
 
-EEG_LE_Phrase =read.csv( Phrase_filename)
-# EEG_LE_Phrase = dplyr::filter(EEG_LE_Phrase, T2 !="NA")
-
-## artifact rejection, rbind() to combine and unique() to remove duplicates
-
-# loop through each Epoch for rejection
-Epoch_List_Raw = list(EEG_LE_Phrase ,EEG_LE_Word ,EEG_LE_Late) # move to list
-rm(EEG_LE_Phrase ,EEG_LE_Word ,EEG_LE_Late) # rm 
-
-
-Epoch_List = Epoch_List_Raw
+Epoch_List =list()
  # lapply(Epoch_List, "[", ,8:12, FUN = mean)
 for (i in seq_along(Epoch_List_Raw)){
   
-    this_epoch=Epoch_List_Raw[[i]][,1:5]
-    this_epoch$Theta=(rowMeans(Epoch_List_Raw[[i]][,8:12]))
-    this_epoch$Alpha= (rowMeans(Epoch_List_Raw[[i]][,17:21]))
+    this_epoch=Epoch_List_Raw[[i]][,!(T2:ExtraTrials)]
+    this_epoch$Theta=(rowMeans(Epoch_List_Raw[[i]][,T4:T8]))
+    this_epoch$Alpha= (rowMeans(Epoch_List_Raw[[i]][,A8:A12]))
     this_epoch$FzMaxAmp=Epoch_List_Raw[[i]]$FzMaxAmp
     this_epoch$PzMaxAmp=Epoch_List_Raw[[i]]$PzMaxAmp
     this_epoch$F3MaxAmp=Epoch_List_Raw[[i]]$F3MaxAmp
     this_epoch$P3MaxAmp=Epoch_List_Raw[[i]]$P3MaxAmp
     this_epoch$F4MaxAmp=Epoch_List_Raw[[i]]$F4MaxAmp
     this_epoch$P4MaxAmp=Epoch_List_Raw[[i]]$P4MaxAmp
-    Epoch_List[i] = list(this_epoch)
-    
-   # https://stackoverflow.com/questions/17499013/how-do-i-make-a-list-of-data-frames
-    # https://stackoverflow.com/questions/1169456/the-difference-between-bracket-and-double-bracket-for-accessing-the-el
+    Epoch_List[Epochs[i]] = list(this_epoch)
 }
 
   # list over Threshold
   print(paste(Threshold, "uV was the threshold across all Epochs and participants"))
 
-Over_T = Epoch_List
+Over_T = list()
 for (i in seq_along(Epoch_List)){
 
- this_Over_T=Epoch_List[[i]]
- this_Over_T=(dplyr::filter(Epoch_List[[i]], FzMaxAmp>Threshold | PzMaxAmp>Threshold | F3MaxAmp>Threshold | P3MaxAmp>Threshold | F4MaxAmp>Threshold | P4MaxAmp>Threshold))
+ this_Over_T=NULL
+ this_Over_T=Epoch_List[[i]][FzMaxAmp>Threshold | PzMaxAmp>Threshold | F3MaxAmp>Threshold | P3MaxAmp>Threshold | F4MaxAmp>Threshold | P4MaxAmp>Threshold]
  Over_T[i] = list(this_Over_T)
   }
   
@@ -227,7 +236,7 @@ for (i in seq_along(Epoch_List)){
   
 EpochRM=setNames(data.frame(matrix(ncol = 3, nrow = 13)), c("Condition", "Num_RM", "Percent"))
   EpochRM$Condition=Conditions
-  EpochRM_List = Over_T
+  EpochRM_List = list()
   
   for (O_i in seq_along(Over_T)){
 
@@ -245,11 +254,11 @@ EpochRM=setNames(data.frame(matrix(ncol = 3, nrow = 13)), c("Condition", "Num_RM
     
   }
     
-  # print table of baseline condition epochs removed
-
-  print(kable(EpochRM_List[[3]][1:5,])%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:5,color = "black"))
+  # # print table of baseline condition epochs removed
+  # 
+  # print(kable(EpochRM_List[[3]][1:5,])%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  # column_spec(1,color="black", bold=T)%>%
+  # row_spec(0:5,color = "black"))
   
   # print table of WIN condition epochs removed
 
