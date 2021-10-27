@@ -650,34 +650,38 @@ EEG_WIN$SNR_num = as.numeric(as.character( EEG_WIN$Condition))
 # colnames(EEG_Baseline)[colnames(EEG_Baseline)=="LISN_LISN.Correct"] = "LISN.Correct"
 
 #merge with PTA Demo
-# EEG_WIN_PTA[[i]]=merge(EEG_WIN, PTA_Demo)
+EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN, PTA_Demo)
 
-#merge for ML 
-EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN,PTA_Demo_Raw)
+#merge for ML in YN only:
+# EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN,PTA_Demo_Raw)
 }
 
 ```
 using only word epoch, might look at others later. 
 
-```{r, eval=FALSE}
+```{r, echo=FALSE}
 EEG.ml.dt = as.data.table(EEG_WIN_PTA_ML[[2]]) # just looking at Word epoch 
 setkey(EEG.ml.dt, Sub) # set Subs as key
-# find and remove WIN Practice data"
-toRemove =  colnames(EEG.ml.dt[,grep('WIN_P_', names(EEG.ml.dt)), with = FALSE])# find
-set(EEG.ml.dt, , toRemove, NULL)# remove
+# # find and remove WIN Practice data"
+# toRemove =  colnames(EEG.ml.dt[,grep('WIN_P_', names(EEG.ml.dt)), with = FALSE])# find
+# set(EEG.ml.dt, , toRemove, NULL)# remove
 EEG.ml.dt$Late.Theta = EEG_WIN_PTA_ML[[3]]$Theta # add late theta
 EEG.ml.dt$Group = factor(EEG.ml.dt$Group, levels = c('YN', 'ONH', 'OHL'))
 # Many char columns should be numeric:
 # Get all character columns
 CharacterCols = EEG.ml.dt%>% select_if(is.character)%>%colnames()
-CharacterCols = CharacterCols[c(2,7,10:length(CharacterCols))] # limit to everything after Demographics
+CharacterCols = CharacterCols[c(8:length(CharacterCols))] # limit to everything after Demographics
 EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols] # change the selected columns to numeric
 
 ```
 
-### Trouble when assigning 0, has length of 0....
+# Steps to find peak LE SNR:
+1) find SNRs that have >= 80%
+2) of those SNRs find the first derivetive of Alpha, Late Theta, ILE and RLE
+3) of those SNRs find the peak of Alpha and Late Theta
+4) Mean of those SNRs is the predicted SNR to have peak LE. 
 
-```{r, eval=FALSE}
+```{r, echo=FALSE}
 EEG.ml = as.data.frame(EEG.ml.dt)
 Per.ceiling = 4
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
@@ -809,14 +813,16 @@ Missing additional hearing eval data in YN, therefore the data allows two approa
 2) OHL, ONH, using all hearing eval data without the YN (N=34), N= 18. 
 will try first approach
 ```{r}
-apply(is.na(EEG.ml), 2, which) # Which variables have NAs? 
+# Fix Col name issue
+setnames(EEG.ml, "Veteran?","Veteran")
+# apply(is.na(EEG.ml), 2, which) # Which variables have NAs? 
 # remove unwanted variables:
 # colnames(EEG.ml)
 # HR.Thresholds = c("L250","L500","L1000","L2000","L3000","L4000","L6000", "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000" )
 additional.HE = c('TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' )
 toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA")
 # toRemove = c(HR.Thresholds, toRemove)
-toRemove = c(additional.HE, toRemove)
+toRemove = c(additional.HE, toRemove, 'Ethnicity') # Have to remove Ethnicity, only one non-white
 EEG.ml.wider = EEG.ml[!(colnames(EEG.ml) %in% toRemove)]
 # pivot wider:
 EEG.ml.wider = pivot_wider (EEG.ml.wider,
@@ -914,11 +920,10 @@ plot(EEG.model$importance)
 
 ```
 
-Note: Results of un-logged (and logged within subject) EEG data show negative % Var explained, meaning that the models are over-fitted and the predictors are uncorrelated with the outcome. I saw this with my data. I did show regression that included. \
 Look at lasso and parameter tuning: https://uc-r.github.io/random_forests
 I could try boosting: https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
 
-## first look at Lasso to see what parameters are useful: https://www.statology.org/lasso-regression-in-r/
+#### first look at Lasso to see what parameters are useful: https://www.statology.org/lasso-regression-in-r/
 
 To perform lasso regression, we’ll use functions from the glmnet package. This package requires the response variable to be a vector and the set of predictor variables to be of the class data.matrix.
 
@@ -927,10 +932,10 @@ Note that setting alpha equal to 0 is equivalent to using ridge regression and s
 
 To determine what value to use for lambda, we’ll perform k-fold cross-validation and identify the lambda value that produces the lowest test mean squared error (MSE).
 
-Note that the function cv.glmnet() automatically performs k-fold cross validation using k = 10 folds.
+Note that the function cv.glmnet() automatically performs k-fold cross validation using k = 6 folds.
 
 ```{r}
-Unwanted = c('Mean.LE.SNR', 'Sub', 'PTA' ,'HF_PTA',"Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
              "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
 
 
@@ -943,7 +948,7 @@ Unwanted = c('Mean.LE.SNR', 'Sub', 'PTA' ,'HF_PTA',"Alpha.d1", "LTheta.d1","Alph
   Predictors.test = data.matrix(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]) # make parameters matrix
   
   lambda_seq = 10^seq(2, -2, by = -.1)
-  EEG.lasso = cv.glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, nfolds = 4, lambda = lambda_seq ) # run 5-fold cross-validation of lasso
+  EEG.lasso = cv.glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, nfolds = 6, lambda = lambda_seq ) # run 5-fold cross-validation of lasso
   # Find optimal lambda value to minimize MSE
   print(EEG.lasso$lambda.min)
   # plot test MSE by lambda value
@@ -954,7 +959,7 @@ Unwanted = c('Mean.LE.SNR', 'Sub', 'PTA' ,'HF_PTA',"Alpha.d1", "LTheta.d1","Alph
   EEG.best.model.coeff=  coef(best_model)
   print( EEG.best.model.coeff)
   print(plot(best_model, xvar = "lambda"))
-  # Rebuilding the model with best lamda value identified
+  # Rebuilding the model with best lambda value identified
   pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = Predictors.test)
   
   # Find R^2
@@ -962,7 +967,7 @@ Unwanted = c('Mean.LE.SNR', 'Sub', 'PTA' ,'HF_PTA',"Alpha.d1", "LTheta.d1","Alph
   tss = sum(( Mean.LE.SNR.test - mean( Mean.LE.SNR.test ))^2)
   rsq = 1-rss/tss
   print(paste('R Squared = ', round(rsq, digits = 3)))
-  print(plot(pred, Mean.LE.SNR.test))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
                         
 
 ```
