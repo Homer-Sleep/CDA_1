@@ -580,19 +580,8 @@ plot_finish
 
  }
 ```
-Alpha: find last SNR before drop, if NA, find SNR that ??
-Score: find last SNR that was at ceiling
-ILE/RLE: find last SNR before X increase
 
 
-
-
-Find and define the break point SNR - this is our new outcome. Keep as numeric because real life SNR is continuous. 
-Possibilities: 
-1) difference between SNRs? when it becomes small or positive? 
-2) 1st derivative?
-3) slope of 2-3 points, middle SNR when slope is 0? 
-compare alpha to performance and self-report? when does self-report go up exp? 
 # Combine EEG and Demo data
 
 ```{r echo=FALSE, warning=FALSE}
@@ -657,7 +646,8 @@ EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN, PTA_Demo)
 }
 
 ```
-using only word epoch, might look at others later. 
+## Using Word Alpha and Late Theta
+These had the strongest effects of SNR. 
 
 ```{r, echo=FALSE}
 EEG.ml.dt = as.data.table(EEG_WIN_PTA_ML[[2]]) # just looking at Word epoch 
@@ -676,14 +666,14 @@ EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols]
 ```
 
 # Steps to find peak LE SNR:
-1) find SNRs that have >= 80%
-2) of those SNRs find the first derivetive of Alpha, Late Theta, ILE and RLE
-3) of those SNRs find the peak of Alpha and Late Theta
+1) Find SNRs that have >= 70%
+2) Within >0 70% SNRs, find the SNR that generates the largest first derivative of Alpha, Late Theta, ILE and RLE
+3) Within >0 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
 4) Mean of those SNRs is the predicted SNR to have peak LE. 
 
 ```{r, echo=FALSE}
 EEG.ml = as.data.frame(EEG.ml.dt)
-Per.ceiling = 4
+Per.ceiling = 3.5
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
 SNRs.d1 = seq(20,0, -4)
 EEG.ml$Ceiling.SNR = NA
@@ -807,11 +797,15 @@ for (Sub.i in seq_along(Subjects)) {
 hist(EEG.ml.dt$Mean.LE.SNR)
 ```
 
-first trial removed :c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1")
-Missing additional hearing eval data in YN, therefore the data allows two approaches
+
+### Missing additional hearing eval data in YN, therefore the data allows two approaches:
 1) YN, OHL, ONH, using PTA and HFPTA and hearing thresholds
 2) OHL, ONH, using all hearing eval data without the YN (N=34), N= 18. 
-will try first approach
+will try first approach. 
+
+Removing the following variables:
+'TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' 
+'SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA"
 ```{r}
 # Fix Col name issue
 setnames(EEG.ml, "Veteran?","Veteran")
@@ -858,7 +852,7 @@ EEG.db[['train']] =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Sub
 EEG.db[['test']] =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# remove Subs in test.obs
 ```
 
-
+Test sample includes: "YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07"
 ```{r, eval=FALSE, echo=FALSE}
 
 
@@ -887,10 +881,10 @@ print(ggplot (EEG.db[['train']], aes(x=Alpha))+
 ```
 
 
-First Attempt: Random forest - no boosting/bagging - predicting Alpha
+### First Attempt: Random forest - no boosting/bagging - predicting Mean peak LE SNR
 
 
-```{r}
+```{r,fig.width=8, fig.height=10}
 #remove unwanted variables:
 # colnames(EEG.db[['train']])
 Unwanted = c('Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8",      
@@ -908,22 +902,28 @@ Unwanted = c('Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_
   # plot tree error
   plot(EEG.model)
 # number of trees with lowest MSE
-which.min(EEG.model$mse)
+paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
 
 # RMSE of this optimal random forest
-sqrt(EEG.model$mse[which.min(EEG.model$mse)])
+paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
 
-plot(EEG.model$importance)
+# plot(EEG.model$importance)
 
-
+varImpPlot(EEG.model)
 
 
 ```
 
+### Regression tree output explainer: 
+%IncMSE: hold the model constant except for one variable. Using the values of that variable in the data set, randomly (permute) them in the model and get the OOB (out of bag CV) error. So, %IncMSE tells us how much randomizing the data for each variable effects the predictive power of the model. The more it effects the outcome, the more important the variable to OOB prediction, the higher the %IncMSE.
+
+IncNodePurity: at each split, you can calculate how much this split reduces node impurity (for regression trees, indeed, the difference between RSS before and after the split). This is summed over all splits for that variable, over all trees.
+
+### Examine variables to find most important: 
 Look at lasso and parameter tuning: https://uc-r.github.io/random_forests
 I could try boosting: https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
 
-#### first look at Lasso to see what parameters are useful: https://www.statology.org/lasso-regression-in-r/
+First look at Lasso to see what parameters are useful: https://www.statology.org/lasso-regression-in-r/
 
 To perform lasso regression, we’ll use functions from the glmnet package. This package requires the response variable to be a vector and the set of predictor variables to be of the class data.matrix.
 
@@ -973,3 +973,34 @@ Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.
 ```
 
 Lasso has shown that most coefficients are set to zero, except 
+
+```{r}
+#remove unwanted variables:
+# colnames(EEG.db[['train']])
+wanted = c('MoCA', 'L4000',' Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
+
+
+  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = 5000, importance=TRUE)
+
+
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+# number of trees with lowest MSE
+paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+
+# RMSE of this optimal random forest
+paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
+
+```
+
+
+
