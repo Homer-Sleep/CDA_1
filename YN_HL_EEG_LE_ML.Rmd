@@ -24,6 +24,7 @@ library(randomForest)
 library(glmnet)
 library(readxl)
 library(data.table)
+library(caret)
 options(scipen = 999) # turn off scientific notation. 
 
 # set to turn html tables on or off 
@@ -816,7 +817,7 @@ setnames(EEG.ml, "Veteran?","Veteran")
 additional.HE = c('TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' )
 toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA")
 # toRemove = c(HR.Thresholds, toRemove)
-toRemove = c(additional.HE, toRemove, 'Ethnicity') # Have to remove Ethnicity, only one non-white
+toRemove = c(additional.HE, toRemove, 'Ethnicity', 'Race') # Have to remove Ethnicity, only one non-white
 EEG.ml.wider = EEG.ml[!(colnames(EEG.ml) %in% toRemove)]
 # pivot wider:
 EEG.ml.wider = pivot_wider (EEG.ml.wider,
@@ -880,6 +881,34 @@ print(ggplot (EEG.db[['train']], aes(x=Alpha))+
 }
 ```
 
+
+### Test new model for multicolliniearty 
+
+```{r}
+Unwanted = c( 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+wanted = c('MoCA', 'L4000','Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
+
+
+# Build linear model
+model1 <- lm(Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
+# Make predictions
+predictions <- model1 %>% predict(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR),
+  R2 = R2(predictions,EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR)
+)
+
+car::vif(model1)
+alias_list = rownames(alias(model1)[["Complete"]])
+```
+
+```{r}
+# Plots 
+# plot()
+```
 
 ### First Attempt: Random forest - no boosting/bagging - predicting Mean peak LE SNR
 
@@ -977,7 +1006,7 @@ Lasso has shown that most coefficients are set to zero, except
 ```{r}
 #remove unwanted variables:
 # colnames(EEG.db[['train']])
-wanted = c('MoCA', 'L4000',' Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
+wanted = c('MoCA', 'L4000','Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
 
 
   EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
@@ -1003,4 +1032,101 @@ varImpPlot(EEG.model)
 ```
 
 
+### Test new model for multicolliniearty 
 
+```{r}
+Unwanted = c( 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+wanted = c('MoCA', 'L4000','Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
+
+
+# Build linear model
+model1 <- lm(Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted])
+# Make predictions
+predictions <- model1 %>% predict(EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted]$Mean.LE.SNR),
+  R2 = R2(predictions,EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted]$Mean.LE.SNR)
+)
+
+car::vif(model1)
+```
+
+With ceiling.SNR, RLE.d1, and WIN_Score_16 having very high to questionable VIF, lets revisit the lasso with these items removed. 
+
+
+```{r}
+Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+
+Multico = c('Ceiling.SNR','RLE.d1', 'WIN_Score_16')
+Unwanted = c(Unwanted, Multico, alias_list)
+
+  # training data set:
+  Mean.LE.SNR.train = EEG.db[['train']]$Mean.LE.SNR # make output variable
+  Predictors.train = data.matrix(EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted]) # make parameters matrix
+  # test data set
+  Mean.LE.SNR.test = EEG.db[['test']]$Mean.LE.SNR # make output variable
+  Predictors.test = data.matrix(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]) # make parameters matrix
+  
+  lambda_seq = 10^seq(2, -2, by = -.1)
+  EEG.lasso = cv.glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, nfolds = 6, lambda = lambda_seq ) # run 5-fold cross-validation of lasso
+  # Find optimal lambda value to minimize MSE
+  print(EEG.lasso$lambda.min)
+  # plot test MSE by lambda value
+  print(plot( EEG.lasso ))
+  
+  # find coefficients of best model:
+  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, lambda = EEG.lasso$lambda.min)
+  EEG.best.model.coeff=  coef(best_model)
+  print( EEG.best.model.coeff)
+  print(plot(best_model, xvar = "lambda"))
+  # Rebuilding the model with best lambda value identified
+  pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = Predictors.test)
+  
+  # Find R^2
+  rss = sum((pred -  Mean.LE.SNR.test )^2)
+  tss = sum(( Mean.LE.SNR.test - mean( Mean.LE.SNR.test ))^2)
+  rsq = 1-rss/tss
+  print(paste('R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+                        
+
+```
+
+
+Try Random Forest again
+
+```{r,fig.width=8, fig.height=10}
+#remove unwanted variables:
+Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+
+Multico = c('Ceiling.SNR','RLE.d1', 'WIN_Score_16')
+Unwanted = c(Unwanted, Multico, alias_list)
+Unwanted = Unwanted[-1]
+
+
+  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], ntree = 5000, importance=TRUE)
+
+
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+# number of trees with lowest MSE
+paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+
+# RMSE of this optimal random forest
+paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
+
+```
