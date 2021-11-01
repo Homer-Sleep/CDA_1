@@ -982,11 +982,40 @@ Unwanted = c(Unwanted, Multico, alias_list)
   print(paste('R Squared = ', round(rsq, digits = 3)))
   print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
                         
+lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE.d1', 'ILE_0', 'RLE_24', 'RLE_4', 'WIN_Score_24', 'WIN_Score_20')
+```
+
+
+Try Random Forest with just Lasso variables
+
+```{r,fig.width=8, fig.height=10}
+
+wanted = c('Mean.LE.SNR', lasso_var)
+
+  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = 5000, importance=TRUE)
+
+
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+# number of trees with lowest MSE
+paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+
+# RMSE of this optimal random forest
+paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
 
 ```
 
 
-Try Random Forest again
+Try Random Forest again with additional variables (alias var removed)
 
 ```{r,fig.width=8, fig.height=10}
 #remove unwanted variables:
