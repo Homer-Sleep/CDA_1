@@ -25,6 +25,7 @@ library(glmnet)
 library(readxl)
 library(data.table)
 library(caret)
+library(ROCR)
 options(scipen = 999) # turn off scientific notation. 
 
 # set to turn html tables on or off 
@@ -925,11 +926,6 @@ car::vif(model1))
 ```
 
 
-### Regression tree output explainer: 
-%IncMSE: hold the model constant except for one variable. Using the values of that variable in the data set, randomly (permute) them in the model and get the OOB (out of bag CV) error. So, %IncMSE tells us how much randomizing the data for each variable effects the predictive power of the model. The more it effects the outcome, the more important the variable to OOB prediction, the higher the %IncMSE.
-
-IncNodePurity: at each split, you can calculate how much this split reduces node impurity (for regression trees, indeed, the difference between RSS before and after the split). This is summed over all splits for that variable, over all trees.
-
 ### Examine variables to find most important: 
 Look at lasso and parameter tuning: https://uc-r.github.io/random_forests
 I could try boosting: https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
@@ -979,7 +975,7 @@ Unwanted = c(Unwanted, Multico, alias_list)
   rss = sum((pred -  Mean.LE.SNR.test )^2)
   tss = sum(( Mean.LE.SNR.test - mean( Mean.LE.SNR.test ))^2)
   rsq = 1-rss/tss
-  print(paste('R Squared = ', round(rsq, digits = 3)))
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
   print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
                         
 lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE.d1', 'ILE_0', 'RLE_24', 'RLE_4', 'WIN_Score_24', 'WIN_Score_20')
@@ -988,7 +984,7 @@ lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE.d1', 'ILE_0', 'RLE_24
 
 Try Random Forest with just Lasso variables
 
-```{r,fig.width=8, fig.height=10}
+```{r}
 
 wanted = c('Mean.LE.SNR', lasso_var)
 
@@ -1001,7 +997,9 @@ wanted = c('Mean.LE.SNR', lasso_var)
   EEG.model
   # plot tree error
   plot(EEG.model)
-# number of trees with lowest MSE
+print('Error stabalizes at around 3500 trees')
+ntree.best = 3500
+  # number of trees with lowest MSE
 paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
 
 # RMSE of this optimal random forest
@@ -1011,9 +1009,109 @@ paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$ms
 
 varImpPlot(EEG.model)
 
+pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
 
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+  
+  
 ```
 
+### Regression tree output explainer: 
+%IncMSE: hold the model constant except for one variable. Using the values of that variable in the data set, randomly (permute) them in the model and get the OOB (out of bag CV) error. So, %IncMSE tells us how much randomizing the data for each variable effects the predictive power of the model. The more it effects the outcome, the more important the variable to OOB prediction, the higher the %IncMSE.
+
+IncNodePurity: at each split, you can calculate how much this split reduces node impurity (for regression trees, indeed, the difference between RSS before and after the split). This is summed over all splits for that variable, over all trees.
+
+### fine tune model:
+Parameters in tuneRF function
+The stepFactor specifies at each iteration, mtry is inflated (or deflated) by this value
+The improve specifies the (relative) improvement in OOB error must be by this much for the search to continue
+The trace specifies whether to print the progress of the search
+The plot specifies whether to plot the OOB error as function of mtry
+
+```{r}
+#From: https://www.listendata.com/2014/11/random-forest-with-r.html
+if (sum(wanted %in% c("Mean.LE.SNR" , "Education","L4000","R2000","R6000","ILE.d1","ILE_0","RLE_24","RLE_4", "WIN_Score_24", "WIN_Score_20")) == 11){
+  print('variables consistent with previous runs')
+}else{
+ stop('Variables in consistent with prevous runs, check alias_list and lasso results')
+ }
+
+
+
+mtry <- tuneRF(EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted[-1]],
+               EEG.db[['train']]$Mean.LE.SNR, ntreeTry=3500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+print(mtry)
+print(best.m)
+```
+
+10 is the optimal number of variables at each node, this is all of the variables. Lets look at what is the best setting for the test data: 
+```{r}
+mtry.list = 2:10
+Mean.Error = rep(0, 9)
+Avg.Result = cbind.data.frame( mtry.list, Mean.Error)
+
+for (i in 1:length(mtry.list)) {
+  Result = NULL
+  for (ii in 1:50) {
+     EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = ntree.best, mtry = mtry.list[i], importance=TRUE)
+pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+ Result[ii] = round(rsq, digits = 3)
+  }
+ Avg.Result[i,2] = mean(Result)
+ 
+  
+  } 
+Avg.Result
+Avg.Result[which.min(Avg.Result$Mean.Error),]
+
+mtry.best = Avg.Result[which.min(Avg.Result$Mean.Error),]$mtry.list
+```
+
+Now run the model with the best of trees and variables to try
+
+```{r}
+
+EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = ntree.best, mtry = mtry.best, importance=TRUE)
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+print('Error stabalizes at around 3500 trees')
+  # number of trees with lowest MSE
+paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+
+# RMSE of this optimal random forest
+paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
+pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+  
+```
 
 Try Random Forest again with additional variables (alias var removed)
 
