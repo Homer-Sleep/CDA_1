@@ -1051,22 +1051,25 @@ print(mtry)
 print(best.m)
 ```
 
-10 is the optimal number of variables at each node, this is all of the variables. Lets look at what is the best setting for the test data: 
+10 is the optimal number of variables at each node, this is all of the variables and will most likely over fit the data. Lets look at what is the best setting for the test data: 
+
 ```{r}
 mtry.list = 2:10
 Mean.Error = rep(0, 9)
 Avg.Result = cbind.data.frame( mtry.list, Mean.Error)
-
+# Let's speed things up with a data.table:
+EEG.db.train = as.data.table(EEG.db[['train']])
+EEG.db.test = as.data.table(EEG.db[['test']])
 for (i in 1:length(mtry.list)) {
   Result = NULL
   for (ii in 1:50) {
      EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = ntree.best, mtry = mtry.list[i], importance=TRUE)
-pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+                         data = EEG.db.train[,..wanted], ntree = ntree.best, mtry = mtry.list[i], importance=TRUE)
+pred = predict(EEG.model, EEG.db.test[,..wanted])
 
   # Find Test R^2
-  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
-  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rss = sum((pred -  EEG.db.test$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db.test$Mean.LE.SNR - mean( EEG.db.test$Mean.LE.SNR ))^2)
   rsq = 1-rss/tss
  Result[ii] = round(rsq, digits = 3)
   }
@@ -1078,6 +1081,7 @@ Avg.Result
 Avg.Result[which.min(Avg.Result$Mean.Error),]
 
 mtry.best = Avg.Result[which.min(Avg.Result$Mean.Error),]$mtry.list
+print(mtry.best)
 ```
 
 Now run the model with the best of trees and variables to try
@@ -1092,11 +1096,8 @@ EEG.model = randomForest(formula = Mean.LE.SNR ~ .,
   # plot tree error
   plot(EEG.model)
 print('Error stabalizes at around 3500 trees')
-  # number of trees with lowest MSE
-paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
 
-# RMSE of this optimal random forest
-paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+paste('RMSE of 3500 tree model = ', sqrt(EEG.model$mse[3500]))
 
 # plot(EEG.model$importance)
 
@@ -1108,41 +1109,37 @@ pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wante
   rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
   tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
   rsq = 1-rss/tss
-  print(paste('Test R Squared = ', round(rsq, digits = 3)))
-  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+  paste('Test R Squared = ', round(rsq, digits = 3))
+  plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) )
+    # Find Test RMSE
+  MRSE = sqrt(mean((pred -  EEG.db[['test']]$Mean.LE.SNR)^2))
+  paste('Test RMSE = ',round(MRSE, digits = 3))
   
 ```
 
-Try Random Forest again with additional variables (alias var removed)
+Compare to linear model
 
-```{r,fig.width=8, fig.height=10}
-#remove unwanted variables:
-Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
-             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
-
-Multico = c('Ceiling.SNR','RLE.d1', 'WIN_Score_16')
-Unwanted = c(Unwanted, Multico, alias_list)
-Unwanted = Unwanted[-1]
-
-
-  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], ntree = 5000, importance=TRUE)
-
-
+```{r}
+EEG.lm.model = lm(Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted])
 
   # model output
-  EEG.model
+  EEG.lm.model
   # plot tree error
-  plot(EEG.model)
-# number of trees with lowest MSE
-paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+  plot(EEG.lm.model)
 
-# RMSE of this optimal random forest
-paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+pred = predict(EEG.lm.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
 
-# plot(EEG.model$importance)
-
-varImpPlot(EEG.model)
-
-
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+    # Find Test RMSE
+  MRSE = sqrt(mean((pred -  EEG.db[['test']]$Mean.LE.SNR)^2))
+  paste('Test RMSE = ',round(MRSE, digits = 3))
 ```
+
+A linear model has a $$R^2$$ = 0.338 and the random forest has typical $$R^2$$ = 0.663. This shows that the data are non-linear and that a random forest approach can better capture and predict the Mean LE SNR outcome. 
+
