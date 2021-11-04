@@ -104,12 +104,15 @@ holmsB = function(tTable){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonfe
   return(tTable)
 }
 
-plot_finish =   theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+plot_finish =    theme_classic()+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
         axis.text.x = element_text(color= 'black',face='bold',size=18))+
   theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
         axis.text.y = element_text(color= 'black',face='bold',size=18))+
-  theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+ theme(legend.text = element_text( size = 18, face = "bold"))+
+theme(legend.position="none")+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
           # using margin was needed because of the inwards placement of ticks
           # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
           axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
@@ -118,8 +121,8 @@ plot_finish =   theme(plot.title = element_text(color= 'black',face='bold',size=
           # length of tick marks - negative sign places ticks inwards
           axis.ticks.length = unit(-1.4, "mm"),
           # width of tick marks in mm
-          axis.ticks = element_line(size = .8))+
-theme(legend.position = "none")
+          axis.ticks = element_line(size = .8))
+
    
 ```
 
@@ -1053,6 +1056,51 @@ print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha_IAF))+
 
 }
 
+```
+
+## Theta and Alpha with both groups
+```{r, echo=FALSE}
+Freq_plot = NULL
+ for (i in seq_along(Epoch_List)){
+   # change alpha theta
+       Freq_plot[[i]] = Epoch_List[[i]]%>% dplyr::select( Sub, Theta, Alpha, SNR_plot, Group)%>%pivot_longer(cols = Theta:Alpha, 
+                                           names_to = "Frequency",
+                                      names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta", "Alpha"))),
+                                           values_to = "Power")
+ }
+```
+
+
+```{r echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+Groups = c('ONH', 'OHL')
+for (ii in Groups) {
+
+ for (i in seq_along(Freq_plot)){
+
+print(ggplot(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == ii), 
+                     aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency))+
+        geom_line(aes(size=.8),stat="summary", fun=mean)+
+        stat_summary(aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge")+
+        geom_point(aes( size = 4),stat="summary", fun=mean)+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c("black", 'black'))+
+   scale_fill_manual(values = Mycolors)+
+         
+  
+      labs(title = paste(ii, Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+    # ylab(bquote(PSD==10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .5))+
+ plot_finish)
+
+ }
+}
 ```
 
 ## Theta by group ONH=black
