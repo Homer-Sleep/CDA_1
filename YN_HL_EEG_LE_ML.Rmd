@@ -669,8 +669,8 @@ EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols]
 
 # Steps to find peak LE SNR:
 1) Find SNRs that have >= 70%
-2) Within >0 70% SNRs, find the SNR that generates the largest first derivative of Alpha, Late Theta, ILE and RLE
-3) Within >0 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
+2) Within >= 70% SNRs, find the SNR that generates the largest first derivative of Alpha, Late Theta, ILE and RLE
+3) Within >= 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
 4) Mean of those SNRs is the predicted SNR to have peak LE. 
 
 ```{r, echo=FALSE}
