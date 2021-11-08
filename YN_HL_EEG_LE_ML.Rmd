@@ -673,6 +673,12 @@ EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols]
 3) Within >= 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
 4) Mean of those SNRs is the predicted SNR to have peak LE. 
 
+# Alternate using only EEG measures in outcome of peak LE SNR:
+1) Find SNRs that have >= 70%
+2) Within >= 70% SNRs, find the SNR that generates the largest first derivative of Alpha and Late Theta
+3) Within >= 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
+4) Mean of those SNRs is the predicted SNR to have peak LE. 
+
 ```{r, echo=FALSE}
 EEG.ml = as.data.frame(EEG.ml.dt)
 Per.ceiling = 3.5
@@ -727,8 +733,11 @@ for (Sub.i in seq_along(Subjects)) {
   EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.peak = SNRs[LTheta.peak]
 
   # Mean SNR of all above predictors:
-  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
-                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1))), digits = 1)
+  # EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+  #                                                                  mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1))), digits = 1)
+  ### Alternate outcome base on EEG measures only
+    EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak))), digits = 1)
 }
 table(EEG.ml$Mean.LE.SNR)
 Histo = hist(EEG.ml$Mean.LE.SNR)
@@ -737,66 +746,6 @@ plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in
 print(ggplot ( EEG.ml, aes(x=Mean.LE.SNR/7))+ 
  geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
  geom_density(alpha=.2, fill="#FF6666"))
-```
-
-```{r, eval=FALSE, echo=FALSE}
-# data table attempt, not working...
-##########
-Per.ceiling = 3.5
-SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
-SNRs.d1 = seq(20,0, -4)
-Subjects = unique(EEG.ml$Sub)
-# EEG.ml.dt$Ceiling.SNR = as.numeric(NA)
-# EEG.ml.dt$Alpha.d1 = NA
-# EEG.ml.dt$LTheta.d1 = NA
-# EEG.ml.dt$Alpha.peak = NA
-# EEG.ml.dt$LTheta.peak = NA
-# EEG.ml.dt$ILE.d1 = NA
-# EEG.ml.dt$RLE.d1 = NA
-# EEG.ml.dt$Mean.LE.SNR = NA
-for (Sub.i in seq_along(Subjects)) {
-  Ceiling.SNR = NULL
-  Alpha.d1 = NULL
-  LTheta.d1 = NULL
-  Alpha.peak = NULL
-  LTheta.peak = NULL
-  ILE.d1 = NULL
-  RLE.d1 = NULL
-  # find the lowest SNR with >= 80% (4/5)
-  Ceiling.SNR = min(as.numeric(as.character(unique(EEG.ml.dt[with(EEG.ml.dt,Sub == Subjects[Sub.i] & WIN_Score >=Per.ceiling),]$Condition))))
-  EEG.ml.dt[Subjects[Sub.i],Ceiling.SNR := (Ceiling.SNR)]  # save to df
-  id = SNRs[1:which(SNRs == Ceiling.SNR)] # get seq of ceiling performance SNRs
-  
-  # find frequency power first derivative with largest change
-  Alpha.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)))
-                                                            # diff(x)=1 so no need to divide 
-  EEG.ml.dt[Subjects[Sub.i], Alpha.d1 := (SNRs.d1[Alpha.d1])] # assign new Alpha 1st derv. 
-     
-  LTheta.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)))
-  EEG.ml.dt[Subjects[Sub.i], LTheta.d1 := (SNRs.d1[LTheta.d1])] 
-  
-  # find peak frequency power 
-  Alpha.peak = which.max(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)
-                                                            
-  EEG.ml.dt[Subjects[Sub.i], Alpha.peak := (SNRs[Alpha.peak])]
-     
-  LTheta.peak = which.max(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)
-  EEG.ml.dt[Subjects[Sub.i], LTheta.peak := (SNRs[LTheta.peak])]
-  
-   # find self-report first derivative with largest change
-  ILE.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_num %in% id),]$ILE)))
-                                                            # diff(x)=1 so no need to divide 
-  EEG.ml.dt[Subjects[Sub.i], ILE.d1 := (SNRs.d1[ILE.d1])]
-     
-  RLE.d1 = which.max(abs(diff(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$RLE)))
-  EEG.ml.dt[Subjects[Sub.i], RLE.d1 := (SNRs.d1[RLE.d1])] 
- 
-  # Mean SNR of all above predictors:
-  EEG.ml.dt[Subjects[Sub.i], Mean.LE.SNR := (with(EEG.ml.dt[with(EEG.ml.dt, Sub == Subjects[Sub.i]),], 
-                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1))))]
-}
-
-hist(EEG.ml.dt$Mean.LE.SNR)
 ```
 
 
@@ -978,7 +927,7 @@ Unwanted = c(Unwanted, Multico, alias_list)
   print(paste('Test R Squared = ', round(rsq, digits = 3)))
   print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
                         
-lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE.d1', 'ILE_0', 'RLE_24', 'RLE_4', 'WIN_Score_24', 'WIN_Score_20')
+lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE_8', 'ILE_0', 'RLE_24', 'RLE_4', 'WIN_Score_24', 'WIN_Score_20')
 ```
 
 
@@ -1038,7 +987,7 @@ The plot specifies whether to plot the OOB error as function of mtry
 if (sum(wanted %in% c("Mean.LE.SNR" , "Education","L4000","R2000","R6000","ILE.d1","ILE_0","RLE_24","RLE_4", "WIN_Score_24", "WIN_Score_20")) == 11){
   print('variables consistent with previous runs')
 }else{
- stop('Variables in consistent with prevous runs, check alias_list and lasso results')
+ warning('Variables in consistent with prevous runs, check alias_list and lasso results')
  }
 
 
@@ -1089,7 +1038,7 @@ Now run the model with the best of trees and variables to try
 ```{r}
 
 EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = ntree.best, mtry = mtry.best, importance=TRUE)
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = ntree.best, mtry = 3, importance=TRUE)
 
   # model output
   EEG.model
@@ -1141,5 +1090,5 @@ pred = predict(EEG.lm.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wa
   paste('Test RMSE = ',round(MRSE, digits = 3))
 ```
 
-A linear model has a $$R^2$$ = 0.338 and the random forest has typical $$R^2$$ = 0.663. This shows that the data are non-linear and that a random forest approach can better capture and predict the Mean LE SNR outcome. 
+A linear model has a $$R^2 = -0.424$$ $$Test RMSE =  4.797$$ the random forest has typical $$R^2 = 0.45$$ and $$Test RMSE =  2.966$$  This shows that the data are non-linear and that a random forest approach can better capture and predict the Mean LE SNR outcome. 
 
