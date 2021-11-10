@@ -79,7 +79,8 @@ theme(legend.position="none")+
 
 ```
 
-## Import older data ## Compare to chunk below, very similar after first 4 lines...##
+## Import Behavioral data 
+
 ```{r, echo=FALSE, warning=FALSE}
 # Import all data:::
 ## load in Self-Reprot and PC data
@@ -739,13 +740,16 @@ for (Sub.i in seq_along(Subjects)) {
     EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
                                                                    mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak))), digits = 1)
 }
-table(EEG.ml$Mean.LE.SNR)
-Histo = hist(EEG.ml$Mean.LE.SNR)
-Histo[['counts']] = Histo[['counts']]/7 # divide by number of conditions to get counts of subjects, data is in long format
-plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in each predicted peak LE SNR', col = 'gray')
-print(ggplot ( EEG.ml, aes(x=Mean.LE.SNR/7))+ 
- geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
- geom_density(alpha=.2, fill="#FF6666"))
+# table(EEG.ml$Mean.LE.SNR)
+# Histo = hist(EEG.ml$Mean.LE.SNR)
+# Histo[['counts']] = Histo[['counts']]/7 # divide by number of conditions to get counts of subjects, data is in long format
+# plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in each predicted peak LE SNR', col = 'gray')
+
+# by Group
+print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
+ geom_histogram(bins = 25, color="#e9ecef", alpha=0.6, position = 'identity'))
+
+
 ```
 
 
@@ -871,7 +875,8 @@ data.frame(
 
 try(
 car::vif(model1))
-
+## 
+length(model1) > model1$rank
 ```
 
 
