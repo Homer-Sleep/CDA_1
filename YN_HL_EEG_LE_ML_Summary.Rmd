@@ -1,0 +1,1096 @@
+---
+title: "YN_EEG_LE_ML"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, results='hide', warning=FALSE, message=FALSE}
+library(plyr)
+#library(papeR)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(tidyr)
+library(foreign)
+library(multcomp)
+library(broom)
+library(nlme)
+library(tidyverse)
+library(randomForest)
+library(glmnet)
+library(readxl)
+library(data.table)
+library(caret)
+library(ROCR)
+options(scipen = 999) # turn off scientific notation. 
+
+# set to turn html tables on or off 
+html_tables=T 
+# help! http://www.cookbook-r.com/Graphs/
+#Set type of artifact rejection threshold 
+
+Threshold= 50
+
+Behav_path = ""
+# ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
+# OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
+ONH_EEG_path <- "ONH/"
+
+OHL_EEG_path <- "OHL/"
+
+YN_EEG_path <- "YN/"
+
+BaseCon_filename = 'BaseConArray.csv'
+
+Word_filename ="WordTrialArray_Ep_0_0.7.csv"
+
+Phrase_filename = "PhraseTrialArray_Ep_-0.8_0.csv"
+
+Late_filename ="LateTrialArray_Ep_0.4_1.1.csv"
+
+# PTA_Demo_Raw=read.csv( "EEG_LE_Data_N=34_PTA_Demo.csv") # PTA and Demo are in with older data set. 
+
+## load in Self-Report and PC data
+# PC_SR_Raw=read.csv( "EEG_LE_Data_N=34_RLE_ILE.csv") # Also in with older data. 
+
+plot_finish =   theme_classic()+
+  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
+   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
+        axis.text.x = element_text(color= 'black',face='bold',size=18))+
+  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
+        axis.text.y = element_text(color= 'black',face='bold',size=18))+
+ theme(legend.text = element_text( size = 18, face = "bold"))+
+theme(legend.position="none")+
+    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
+          # using margin was needed because of the inwards placement of ticks
+          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
+          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
+          # adjust Y-axis labels
+          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
+          # length of tick marks - negative sign places ticks inwards
+          axis.ticks.length = unit(-1.4, "mm"),
+          # width of tick marks in mm
+          axis.ticks = element_line(size = .8))
+
+
+```
+
+## Import Behavioral data 
+
+```{r, echo=FALSE, warning=FALSE}
+# Import all data:::
+## load in Self-Reprot and PC data
+
+PTA_Demo_Raw=as.data.frame(read_excel(paste0(Behav_path, "EEG_LE_CDA_Data.xlsx"), sheet = 'Enter Data Here'))
+PTA_Demo_Raw = dplyr::filter(PTA_Demo_Raw, Group %in% c("OHL","ONH", "YN"))
+PTA_Demo_Raw[PTA_Demo_Raw == ""] = NA # empty cells are NA
+PTA_Demo_Raw = Filter(function(x)!all(is.na(x)),PTA_Demo_Raw) # remove columns that are NA
+PTA_Demo_Raw = PTA_Demo_Raw[,-c(147:149)]
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="R LE LISN"] = "LISN__RLE"
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="I LE LISN"] = "LISN__ILE"
+
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="Subj#"] = "Sub"
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="MoCA Raw Score"] = "MoCA"
+PTA_Demo_Raw$MoCA = as.integer(PTA_Demo_Raw$MoCA)
+colnames(PTA_Demo_Raw)[colnames(PTA_Demo_Raw)=="Adj. MoCA"] = "Adj_MoCA"
+PTA_Demo_Raw$Adj_MoCA = as.integer(PTA_Demo_Raw$Adj_MoCA)
+PTA_Demo_Raw$Sub=gsub("00", "_0", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw$Sub=gsub("N0", "N_", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw$Sub=gsub("L0", "L_", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw$Sub=gsub("H0", "H_", PTA_Demo_Raw$Sub)
+PTA_Demo_Raw = droplevels(PTA_Demo_Raw) # drop all unused factor levels, for all factors in df!
+PTA_Demo_Raw$Sub=as.factor(PTA_Demo_Raw$Sub)
+PTA_Demo = PTA_Demo_Raw[,1:37]
+PTA_Demo$Age = as.numeric(PTA_Demo$Age)
+PTA_Demo$TFI = as.numeric(PTA_Demo$TFI)
+PTA_Demo$PTA = as.numeric(PTA_Demo$PTA)
+PTA_Demo$HF_PTA = as.numeric(PTA_Demo$HF_PTA)
+PTA_Demo$MoCA = as.numeric(PTA_Demo$MoCA)
+PTA_Demo$Education = as.numeric(PTA_Demo$Education)
+
+
+PC_SR = PTA_Demo_Raw[,c(1:5,39:146)]
+
+# ## load in Self-Reprot and PC data
+
+# convert to long format and split on 6th char in Variable names
+# using this example: https://stackoverflow.com/questions/25272018/split-column-name-and-convert-data-from-wide-to-long-format-in-r
+# and this for help: https://ademos.people.uic.edu/Chapter9.html
+
+PC_SR=PC_SR %>% gather(var, SR, LISN__RLE:WIN_R2_0dB_ILE)%>%
+  separate(var, c("Run", "Condition"), sep = 6)
+
+
+# remove leading and trailing "_"  
+# help http://www.endmemo.com/program/R/gsub.php
+PC_SR$Condition=gsub("^_", "", PC_SR$Condition)
+PC_SR$Run=gsub("__$","", PC_SR$Run)
+PC_SR$Run=gsub("_$","", PC_SR$Run)
+
+
+
+# fix naming for sep "_" below
+PC_SR$Condition=gsub("RLE", "LISN_RLE", PC_SR$Condition)
+PC_SR$Condition=gsub("ILE", "LISN_ILE", PC_SR$Condition)
+PC_SR$Condition=gsub("_LISN_", "_", PC_SR$Condition)
+
+
+# split Condition name from Score type, ic splits on "_" 
+PC_SR=PC_SR %>% separate(Condition,c("Condition", "Score_type"),
+                         sep = "_") 
+
+#tiddy vers way, change to tibble
+PC_SR_tib = as_tibble(PC_SR) 
+# arrange by subj., works! 
+PC_SR_tib=PC_SR_tib%>% arrange(Sub)
+# make wide format for self reports
+PC_SR_tib=PC_SR_tib%>% spread(Score_type, SR)
+# reorder columns
+PC_SR_tib=PC_SR_tib[c(1:5,7,8, 6, 9:11)]
+# rename columns
+colnames(PC_SR_tib)[colnames(PC_SR_tib)=="Score"] = "WIN_Score"
+
+
+# back to data.frame
+PC_SR=data.frame(PC_SR_tib)
+PC_SR$Run=gsub("LISN", "Baseline", PC_SR$Run)
+PC_SR$Run=as.factor(PC_SR$Run)
+PC_SR$Condition=as.factor(PC_SR$Condition)
+PC_SR$WIN_Score=as.integer(PC_SR$WIN_Score)
+PC_SR$LISN.Correct=as.integer(PC_SR$LISN.Correct)
+PC_SR$ILE=as.integer(PC_SR$ILE)
+PC_SR$RLE=as.integer(PC_SR$RLE)
+rm(PC_SR_Raw)
+rm(PC_SR_tib)
+# summary(PTA_Demo)
+# summary(PC_SR)
+```
+
+
+```{r, echo=FALSE,results='asis'}
+## Load EEG data, append each group, make one list of all subjects with group ID:
+Groups = c('YN', 'ONH', 'OHL')
+Epochs = c('Phrase', 'Word', 'Late')
+Phrase_list = list()
+Word_list = list()
+Late_list = list()
+
+for (i in Groups) {
+  path = paste(i, "_EEG_path",sep = "")
+  Phrase_list[[i]] = fread(paste0(i,'/', Phrase_filename))
+  Phrase_list[[i]]$Group = i #assign Group name
+  Phrase_list[[i]] = na.omit(Phrase_list[[i]], cols='T2') # remove rows with NA 
+}
+Phrase= rbindlist(Phrase_list) # row bind the lists
+
+for (i in Groups) {
+  path = paste(i, "_EEG_path",sep = "")
+  Word_list[[i]] = fread(paste0(i,'/', Word_filename))
+  Word_list[[i]]$Group = i #assign Group name
+  Word_list[[i]] = na.omit(Word_list[[i]], cols='T2') # remove rows with NA 
+}
+Word= rbindlist(Word_list) # row bind the lists
+
+for (i in Groups) {
+  path = paste(i, "_EEG_path",sep = "")
+  Late_list[[i]] = fread(paste0(i,'/', Late_filename))
+  Late_list[[i]]$Group = i #assign Group name
+  Late_list[[i]] = na.omit(Late_list[[i]], cols='T2') # remove rows with NA 
+}
+Late= rbindlist(Late_list) # row bind the lists
+# Epoch list of all EEG data
+Epoch_List_Raw = list('Phrase'= Phrase, 'Word' = Word, 'Late' = Late)
+# rm unused data:
+rm(Phrase, Phrase_list, Word, Word_list, Late, Late_list)
+
+Epoch_List =list()
+ # lapply(Epoch_List, "[", ,8:12, FUN = mean)
+for (i in seq_along(Epoch_List_Raw)){
+  
+    this_epoch=Epoch_List_Raw[[i]][,!(T2:ExtraTrials)]
+    this_epoch$Theta=(rowMeans(Epoch_List_Raw[[i]][,T4:T8]))
+    this_epoch$Alpha= (rowMeans(Epoch_List_Raw[[i]][,A8:A12]))
+    this_epoch$FzMaxAmp=Epoch_List_Raw[[i]]$FzMaxAmp
+    this_epoch$PzMaxAmp=Epoch_List_Raw[[i]]$PzMaxAmp
+    this_epoch$F3MaxAmp=Epoch_List_Raw[[i]]$F3MaxAmp
+    this_epoch$P3MaxAmp=Epoch_List_Raw[[i]]$P3MaxAmp
+    this_epoch$F4MaxAmp=Epoch_List_Raw[[i]]$F4MaxAmp
+    this_epoch$P4MaxAmp=Epoch_List_Raw[[i]]$P4MaxAmp
+    Epoch_List[Epochs[i]] = list(this_epoch)
+}
+
+  # list over Threshold
+  ##### print(paste(Threshold, "uV was the threshold across all Epochs and participants"))
+
+Over_T = list()
+for (i in seq_along(Epoch_List)){
+
+ this_Over_T=NULL
+ this_Over_T=Epoch_List[[i]][FzMaxAmp>Threshold | PzMaxAmp>Threshold | F3MaxAmp>Threshold | P3MaxAmp>Threshold | F4MaxAmp>Threshold | P4MaxAmp>Threshold]
+ Over_T[i] = list(this_Over_T)
+  }
+  
+  Conditions =c('Eyes_Open', 'Eyes_Closed', 'Countdown', 'LISN', 'Baseline Total','24dB', '20dB', '16dB',
+                     '12dB', '8dB', '4dB', '0dB','WIN Total')
+  
+EpochRM=setNames(data.frame(matrix(ncol = 3, nrow = 13)), c("Condition", "Num_RM", "Percent"))
+  EpochRM$Condition=Conditions
+  EpochRM_List = list()
+  
+  for (O_i in seq_along(Over_T)){
+
+    this_EpochRM = EpochRM
+  
+    for (C_i in seq_along(Conditions)){
+    this_EpochRM[C_i,2] = nrow(dplyr::filter(Over_T[[O_i]], Condition ==Conditions[C_i]))
+    this_EpochRM[C_i,3] = this_EpochRM[C_i,2]/ (nrow(dplyr::filter(Epoch_List[[O_i]], Condition ==Conditions[C_i])))
+    }
+    
+    this_EpochRM[5,2]=sum(this_EpochRM[1:4,2])
+    this_EpochRM[13,2]=sum(this_EpochRM[6:12,2])
+    this_EpochRM[13,3]=this_EpochRM[13,2]/(nrow(dplyr::filter(Epoch_List[[O_i]], Run %in% c("WIN_1", "WIN_2", "WIN_R1", "WIN_R2"))))
+    EpochRM_List[O_i] = list(this_EpochRM)
+    
+  }
+    
+
+  # print table of WIN condition epochs removed
+
+  RMtable=  kable(EpochRM_List[[1]][6:13,], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:8,color = "black")
+     #####  print(RMtable)
+
+ 
+     # Remove over Threshold   
+  Channels = c('FzMaxAmp', 'PzMaxAmp', 'F3MaxAmp', 'P3MaxAmp', 'F4MaxAmp', 'P4MaxAmp')
+  
+  test = Epoch_List
+   for (i in seq_along(Epoch_List)){
+     Epoch_List[[i]]= Epoch_List[[i]][FzMaxAmp<Threshold & PzMaxAmp<Threshold & F3MaxAmp<Threshold & P3MaxAmp<Threshold &
+                                        F4MaxAmp<Threshold & P4MaxAmp<Threshold]
+   }
+  
+
+
+```
+
+
+## Plots 
+
+
+```{r, echo=FALSE, warning=FALSE, results='hide'}
+
+ for (i in seq_along(Epoch_List)){
+
+# Order the SNR levels for plot
+
+Epoch_List[[i]]$Condition = gsub("dB", "", Epoch_List[[i]]$Condition) # remove dB
+
+Epoch_List[[i]]$Condition <- factor(Epoch_List[[i]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+Epoch_List[[i]]$SNR_plot <- factor(Epoch_List[[i]]$Condition, levels=c("24","20","16","12", "8", "4","0"))
+Epoch_List[[i]]$Response = factor(Epoch_List[[i]]$Response, levels = c("Cor", "InCor", "NoRes"))  
+# EEG_Summary_Theta = as.data.frame( Epoch_List[[3]] %>% group_by(Condition) %>% summarise(Theta_M = mean(Theta), Theta_SD = sd(Theta)))
+# EEG_Summary_Alpha = as.data.frame( Epoch_List[[3]] %>% group_by(Condition) %>% summarise(Alpha_M = mean(Alpha), Alpha_SD = sd(Alpha)))
+
+# create the variable Paradigm 
+
+#  which records whether the conditions were presented in sequential order
+#  or in randomized order
+Epoch_List[[i]]$Paradigm <- NA
+Epoch_List[[i]]$Paradigm[Epoch_List[[i]]$Run %in% c("WIN_1", "WIN_2")] <- 0
+Epoch_List[[i]]$Paradigm[Epoch_List[[i]]$Run %in% c("WIN_R1", "WIN_R2")] <- 1
+# convert to factor and label the levels
+Epoch_List[[i]]$Paradigm <- factor(Epoch_List[[i]]$Paradigm, labels=c("sequential", "randomized"))
+
+Epoch_List[[i]]$SNR = scale(as.numeric(Epoch_List[[i]]$Condition), center = T, scale = F) # SNR is centered and continuous 
+
+}
+
+PC_df=PC_SR
+PC_SR$Condition = gsub("dB", "", PC_SR$Condition) # add space
+PC_df$Condition <- factor(PC_SR$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+PC_df$SNR_plot <- factor(PC_SR$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+PC_df$SNR = scale(as.numeric(PC_df$Condition), center = T, scale = F)# SNR is centered and continuous 
+PC_df$Paradigm <- NA
+PC_df$Paradigm[PC_df$Run %in% c("WIN_1", "WIN_2")] <- 0
+PC_df$Paradigm[PC_df$Run %in% c("WIN_R1", "WIN_R2")] <- 1
+# convert to factor and label the levels
+PC_df$Paradigm <- factor(PC_df$Paradigm, labels=c("sequential", "randomized"))
+
+# create Percent Correct variable
+PC_df$PerCor = (PC_df$WIN_Score/5)*100
+
+```
+
+
+```{r, echo=FALSE, warning=FALSE, results='hide',dpi = 300, dev.args = list(png  = list(type = "cairo"))}
+# PC plot
+# PC_plot=
+  ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor))+
+   geom_point(size=4, stat="summary", fun=mean)+
+   geom_line(stat="summary", fun=mean, group=10, size=2)+
+  stat_summary( geom = "errorbar", fun.data = mean_se, position = "dodge", color="black",size=.8, width=.4)+
+  theme_classic()+
+  scale_y_continuous(breaks=c(20,40, 60, 80,100))+
+   #labs(title = "Words Recognized over WIN SNR")+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("WORDS RECOGNIZED \nIN % CORRECT")+
+plot_finish
+ 
+   
+# print(PC_plot)
+#ggsave(PC_plot, filename = "PC_plot.png", height = 4, width = 6, dpi = 300, type = "cairo")
+```
+
+
+
+
+```{r,  echo=FALSE, warning=FALSE, results='hide',dpi = 300, dev.args = list(png  = list(type = "cairo")), eval=FALSE}
+PC_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.1)+
+  
+    
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.1)+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
+             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+     
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.1)+ 
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
+             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+  
+        
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.1)+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+             shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
+  
+   
+  theme_classic()+
+   #labs(title = "Words Recognized over WIN SNR")+
+    #scale_y_continuous(breaks=c(.20,.40, .60, .80,1),labels = scales::percent_format(accuracy = 1))+
+  scale_y_continuous(breaks=c(20,40, 60, 80,100))+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("WORDS RECOGNIZED \nIN % CORRECT")+
+plot_finish
+print(PC_plot)
+```
+
+
+### Self-Reported Listening Effort
+```{r,  echo=FALSE, warning=FALSE, results='hide',dpi = 300, dev.args = list(png  = list(type = "cairo"))}
+# attempt at PC and self-report plot
+SelfReport_plot=ggplot()+
+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE),
+             shape=23,fill = "black", stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.2)+
+  
+    
+  geom_line (data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.2)+
+  geom_point(data=dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=ILE),
+             shape=23,fill = "white", stat="summary", fun=mean, size = 4)+
+
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+  theme_classic()+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED & INVESTED \nSELF-REPORTED EFFORT")+
+plot_finish
+   
+print(SelfReport_plot)
+```
+
+```{r, echo=FALSE}
+# plot shows each point and average line across SNR
+  ##### ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR, y=ILE, group=Sub, color = Sub))+
+  #        geom_jitter()+
+  #        geom_line(stat = 'smooth', method = "loess")+
+  # theme(legend.position = 'none')
+
+# plot show the lm for each person, this is how we will define the two groups.
+  ##### ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR, y=ILE, group=Sub, color = Sub))+
+  # geom_jitter()+
+  # geom_line(stat="smooth", method = "lm" )+
+  # theme(legend.position = 'none')
+
+
+# Split, apply, converge method. 
+PC_df$Sub = factor(PC_df$Sub)
+PC_df_filtered = dplyr::filter(PC_df, Condition != "LISN")
+# split into list of data for each sub
+Split_DF = split(PC_df_filtered, f = PC_df_filtered$Sub)
+#apply lm for each sub.
+fit_lm = function(data){
+ lm(data = data, ILE ~ SNR)$coeff
+}
+Result=lapply(Split_DF,fit_lm)
+
+# grab and plot intercept for each sub
+ILE_coeff = data.frame(do.call("rbind", Result))
+
+  ##### plot(ILE_coeff)
+
+names (ILE_coeff)= c("Intercept", "SNR")
+
+# standardize prior to clustering
+ILE_coeff$Intercept = ILE_coeff$Intercept/ sd (ILE_coeff$Intercept)              # Learn data.table
+ILE_coeff$SNR = ILE_coeff$SNR/ sd (ILE_coeff$SNR)              
+# cluster to define the two groups with set.seed
+set.seed(123)
+ILE_Clust = kmeans(ILE_coeff, centers = 2)
+ILE_coeff$Clust = ILE_Clust$cluster
+
+  ##### ggplot(data = ILE_coeff, aes(x=SNR, y=Intercept, color = factor(Clust)))+
+  # geom_point()
+
+ILE_coeff$Sub= rownames(ILE_coeff)
+ILE_coeff$Sub = factor(ILE_coeff$Sub)
+# converge cluster number back into main df
+PC_df = merge(dplyr::select(ILE_coeff, Sub, Clust),PC_df, by ="Sub" )
+PC_df = dplyr::filter(PC_df, Condition != "LISN") # remove LISN from condition scores
+
+#apply to each Epoch LIst.
+Merge_clust = function(x,y){
+ merge(x, y , by = "Sub")
+  }
+Epoch_List=lapply(Epoch_List, Merge_clust,y=dplyr::select(ILE_coeff, Sub, Clust))
+
+# add SNR*Clust to each polynomial 
+# Mark - Cannot be done with 3rd order ploy. Cluster....
+```
+
+## log transform within each subject:
+ Theta, Alpha
+```{r, warning=FALSE, message=FALSE}
+for (i in seq_along(Epoch_List)) {
+  Epoch_List[[i]] =  Epoch_List[[i]]%>%dplyr::group_by(Sub,Run,Condition, SNR,SNR_plot)%>%dplyr::summarise(Theta =log((Theta)), Alpha = log((Alpha)))
+}
+```
+
+```{r echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+Freq_plot = NULL
+ for (i in seq_along(Epoch_List)){
+   # change alpha theta
+       Freq_plot[[i]] = Epoch_List[[i]]%>%dplyr::select( Sub, Theta, Alpha, SNR_plot)%>%pivot_longer(cols = Theta:Alpha, 
+                                           names_to = "Frequency",
+                                      names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta", "Alpha"))),
+                                           values_to = "Power")
+#######
+# All_Freq_Plot=ggplot(data=dplyr::filter(Epoch_List[[i]], !is.na(SNR_plot)), aes(x=SNR_plot))+
+print(ggplot(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot)), 
+                     aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency))+
+        geom_line(aes(size=.8),stat="summary", fun=mean)+
+        stat_summary(aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge")+
+        geom_point(aes( size = 4),stat="summary", fun=mean)+
+                   
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c("black", 'black'))+
+   scale_fill_manual(values = Mycolors)+
+         
+  
+      labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+    # ylab(bquote(PSD==10~"*"~log[10](µV^2*"/"~Hz)))
+  # coord_cartesian(ylim=c(-.3, .4))+
+plot_finish
+)
+}
+```
+plot individual theta/alpha, ILE, RLE, Win Score:
+
+```{r, echo=FALSE, eval=FALSE}
+Mycolors = c("Late.Theta" = "dodgerblue2", "Alpha" = "red2")
+
+# copy late theta to word epoch df:
+  Epoch_List[[2]]$Late.Theta = Epoch_List[[3]]$Theta
+    
+
+#print(ggplot(data=dplyr::filter(Epoch_List[[i]], !is.na(SNR_plot), Sub ==  Subjects[Sub.i]), 
+        Freq_plot = Epoch_List[[2]]%>%dplyr::select( Sub, Late.Theta, Alpha, SNR_plot)%>%pivot_longer(cols = Late.Theta:Alpha, 
+                                           names_to = "Frequency",
+                                      names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Late.Theta", "Alpha"))),
+                                           values_to = "Power")
+i = 2
+Subjects = unique(PC_df$Sub)
+for (Sub.i in seq_along(Subjects)) {
+  print(ggplot(data=dplyr::filter(PC_df, Condition != "LISN", Sub == Subjects[Sub.i]))+
+  geom_point( aes(x=SNR_plot, y=RLE),
+             shape=23,fill = "black", stat="summary", fun=mean, size = 4)+
+  geom_line ( aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary( aes(x=SNR_plot, y=RLE),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.2)+
+    geom_line ( aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary( aes(x=SNR_plot, y=ILE),
+                geom = "errorbar", fun.data = mean_se, position = "dodge", size=.7,width=.2)+
+  geom_point( aes(x=SNR_plot, y=ILE),
+             shape=23,fill = "white", stat="summary", fun=mean, size = 4)+
+  
+   geom_point(aes(x=SNR_plot, y=(PerCor/10)), size=4, stat="summary", fun=mean)+
+   geom_line(aes(x=SNR_plot, y=(PerCor/10)),stat="summary", fun=mean, group=10, size=2)+
+  stat_summary(aes(x=SNR_plot, y=(PerCor/10)), geom = "errorbar", fun.data = mean_se, position = "dodge", color="black",size=.8, width=.4)+
+  labs(title = paste(Subjects[Sub.i], Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+  plot_finish)
+
+
+
+#######
+# All_Freq_Plot=ggplot(data=dplyr::filter(Epoch_List[[i]], !is.na(SNR_plot)), aes(x=SNR_plot))+
+print(ggplot(data=dplyr::filter(Freq_plot, !is.na(SNR_plot),Sub ==  Subjects[Sub.i]), 
+                     aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency))+
+        geom_line(aes(size=.8),stat="summary", fun=mean)+
+        stat_summary(aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge")+
+        geom_point(aes( size = 4),stat="summary", fun=mean)+
+                   
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c("black", 'black'))+
+   scale_fill_manual(values = Mycolors)+
+         
+  
+      labs(title = paste(Subjects[Sub.i], Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+    # ylab(bquote(PSD==10~"*"~log[10](µV^2*"/"~Hz)))
+  # coord_cartesian(ylim=c(-.3, .4))+
+plot_finish
+)
+
+ }
+```
+
+
+# Combine EEG and Demo data
+
+```{r echo=FALSE, warning=FALSE}
+# EEG_WIN_PTA=Epoch_List
+EEG_WIN_PTA_ML = list()
+
+for (i in seq_along(Epoch_List)){
+  
+#####
+# First average Freq of each condition:
+EEG_LE_Avg= Epoch_List[[i]]%>%dplyr::group_by(Sub,Run,Condition, SNR)%>%dplyr::summarise(Theta =mean((Theta)), Alpha = mean((Alpha)))
+# merge data sets
+EEG_PC_SR = merge(EEG_LE_Avg, PC_SR, all=T)
+
+## collapse across Run???
+#  try what this post said: https://stackoverflow.com/questions/31060105/dplyr-dealing-with-nas-while-calculating-mean-summarize-each-on-group-by-obje
+# Notice the %<>% to replace data that is entered...
+EEG_PC_SR%<>%group_by(Sub, Condition)%>% summarise_each(funs(mean(., na.rm = TRUE)))
+
+# remove Run column
+EEG_PC_SR=within(EEG_PC_SR,rm(Run))
+
+# # Split Baseline from WIN 
+# EEG_Baseline=EEG_PC_SR%>%dplyr::select(Sub,Condition, Theta, Alpha, ILE, RLE, LISN.Correct) %>%
+#   dplyr::filter(Condition %in% c("Eyes_Open", "Eyes_Closed", "Countdown", "LISN"))
+
+EEG_WIN=EEG_PC_SR%>%dplyr::select(Sub,Condition, SNR,Theta, Alpha, ILE, RLE, WIN_Score) %>%
+  dplyr::filter(Condition %in% c("24", "20", "16", "12", "8", "4", "0"))
+EEG_WIN$SNR_plot <- factor(EEG_WIN$Condition, levels=c("24","20","16","12", "8", "4","0")) 
+
+# Subjective addition Effort
+# EEG_WIN$SAE =  (EEG_WIN$ILE - EEG_WIN$RLE)
+
+# Performance Corrected Effort
+# EEG_WIN$PCE=EEG_WIN$ILE -(2* (5- EEG_WIN$WIN_Score))
+
+# SNR and Performance (Neuroeconomic )
+
+EEG_WIN$SNR_num = as.numeric(as.character( EEG_WIN$Condition))
+
+# EEG_WIN$SNR_inver = abs( EEG_WIN$SNR_num - 24)
+# EEG_WIN$Neuroeconomic =((EEG_WIN$SNR_inver/2.4) - (2* (5- EEG_WIN$WIN_Score))) + EEG_WIN$SAE
+
+# Proxy tests: 
+# EEG_WIN$Proxy1=((EEG_WIN$SNR_inver/2.4) - (EEG_WIN$ILE) - (2* (5- EEG_WIN$WIN_Score))) 
+
+
+# # spread one key across multiple value columns 
+# # https://community.rstudio.com/t/spread-with-multiple-value-columns/5378
+# EEG_Baseline= EEG_Baseline%>%gather(variable, value, -(Sub:Condition))%>%
+#                             unite(temp, Condition, variable)%>%
+#                             spread(temp, value)
+# # remove columns filled with NA
+# EEG_Baseline= EEG_Baseline%>% select_if(~sum(!is.na(.)) > 0)
+# colnames(EEG_Baseline)[colnames(EEG_Baseline)=="LISN_LISN.Correct"] = "LISN.Correct"
+
+#merge with PTA Demo
+EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN, PTA_Demo)
+
+#merge for ML in YN only:
+# EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN,PTA_Demo_Raw)
+}
+
+```
+## Using Word Alpha and Late Theta
+These had the strongest effects of SNR. 
+
+```{r, echo=FALSE}
+EEG.ml.dt = as.data.table(EEG_WIN_PTA_ML[[2]]) # just looking at Word epoch 
+setkey(EEG.ml.dt, Sub) # set Subs as key
+# # find and remove WIN Practice data"
+# toRemove =  colnames(EEG.ml.dt[,grep('WIN_P_', names(EEG.ml.dt)), with = FALSE])# find
+# set(EEG.ml.dt, , toRemove, NULL)# remove
+EEG.ml.dt$Late.Theta = EEG_WIN_PTA_ML[[3]]$Theta # add late theta
+EEG.ml.dt$Group = factor(EEG.ml.dt$Group, levels = c('YN', 'ONH', 'OHL'))
+# Many char columns should be numeric:
+# Get all character columns
+CharacterCols = EEG.ml.dt%>% select_if(is.character)%>%colnames()
+CharacterCols = CharacterCols[c(8:length(CharacterCols))] # limit to everything after Demographics
+EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols] # change the selected columns to numeric
+
+```
+
+# Steps to find peak LE SNR:
+1) Find SNRs that have >= 70%
+2) Within >= 70% SNRs, find the SNR that generates the largest first derivative of Alpha, Late Theta, ILE and RLE
+3) Within >= 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
+4) Mean of those SNRs is the predicted SNR to have peak LE. 
+
+# Alternate using only EEG measures in outcome of peak LE SNR:
+1) Find SNRs that have >= 70%
+2) Within >= 70% SNRs, find the SNR that generates the largest first derivative of Alpha and Late Theta
+3) Within >= 70% SNRs, find the SNR that generates peak (positive) of Alpha and Late Theta
+4) Mean of those SNRs is the predicted SNR to have peak LE. 
+
+```{r}
+Subjects = unique(PC_df$Sub)
+EEG.ml = as.data.frame(EEG.ml.dt)
+Per.ceiling = 3.5
+SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
+SNRs.d1 = seq(20,0, -4)
+EEG.ml$Ceiling.SNR = NA
+EEG.ml$Alpha.d1 = NA
+EEG.ml$LTheta.d1 = NA
+EEG.ml$Alpha.peak = NA
+EEG.ml$LTheta.peak = NA
+EEG.ml$ILE.d1 = NA
+EEG.ml$RLE.d1 = NA
+EEG.ml$Mean.LE.SNR = NA
+for (Sub.i in seq_along(Subjects)) {
+  Ceiling.SNR = NULL
+  Alpha.d1 = NULL
+  LTheta.d1 = NULL
+  Alpha.peak = NULL 
+  LTheta.peak = NULL
+  ILE.d1 = NULL
+  RLE.d1 = NULL
+  # find the lowest SNR with >= 80% (4/5)
+  Ceiling.SNR = min(as.numeric(as.character(unique(EEG.ml[with(EEG.ml,Sub == Subjects[Sub.i] & WIN_Score >=Per.ceiling),]$Condition))))
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Ceiling.SNR = Ceiling.SNR # save to df
+  id = SNRs[1:which(SNRs == Ceiling.SNR)] # get seq of ceiling performance SNRs
+  if (length(id) != 1){ # if there is only one condition, there is no derivative, just name that condition. 
+  # find frequency power first derivative with largest change
+    Alpha.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)))# diff(x)=1 so no need to divide
+    EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.d1 = SNRs.d1[Alpha.d1]
+    
+    LTheta.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)))
+    EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.d1 = SNRs.d1[LTheta.d1]
+    
+  # find self-report first derivative with largest change
+    ILE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$ILE)))
+    EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$ILE.d1 = SNRs.d1[ILE.d1]
+       
+    RLE.d1 = which.max(abs(diff(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$RLE)))
+    EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$RLE.d1 = SNRs.d1[RLE.d1] 
+  }else{ # just name that condition. 
+     EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.d1 = id
+     EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.d1 = id
+     EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$ILE.d1 = id
+     EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$RLE.d1 = id
+  }
+  
+  # find peak frequency power 
+  Alpha.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_num %in% id),]$Alpha)
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Alpha.peak = SNRs[Alpha.peak]
+     
+  LTheta.peak = which.max(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i] & SNR_plot %in% id),]$Late.Theta)
+  EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$LTheta.peak = SNRs[LTheta.peak]
+
+  # Mean SNR of all above predictors:
+  # EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+  #                                                                  mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak, ILE.d1, RLE.d1))), digits = 1)
+  ### Alternate outcome base on EEG measures only
+    EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
+                                                                   mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak))), digits = 1)
+}
+# table(EEG.ml$Mean.LE.SNR)
+# Histo = hist(EEG.ml$Mean.LE.SNR)
+# Histo[['counts']] = Histo[['counts']]/7 # divide by number of conditions to get counts of subjects, data is in long format
+# plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in each predicted peak LE SNR', col = 'gray')
+
+# by Group
+print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
+ geom_histogram(bins = 25, color="#e9ecef", alpha=0.6, position = 'identity'))
+
+
+```
+
+
+### Missing additional hearing eval data in YN, therefore the data allows two approaches:
+1) YN, OHL, ONH, using PTA and HFPTA and hearing thresholds
+2) OHL, ONH, using all hearing eval data without the YN (N=34), N= 18. 
+will try first approach. 
+
+Removing the following variables:
+'TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' 
+'SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA"
+```{r}
+# Fix Col name issue
+setnames(EEG.ml, "Veteran?","Veteran")
+# apply(is.na(EEG.ml), 2, which) # Which variables have NAs? 
+# remove unwanted variables:
+# colnames(EEG.ml)
+# HR.Thresholds = c("L250","L500","L1000","L2000","L3000","L4000","L6000", "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000" )
+additional.HE = c('TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' )
+toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA", 'Handedness', 'Veteran', 'Gender')
+# toRemove = c(HR.Thresholds, toRemove)
+toRemove = c(additional.HE, toRemove, 'Ethnicity', 'Race') # Have to remove Ethnicity, only one non-white
+EEG.ml.wider = EEG.ml[!(colnames(EEG.ml) %in% toRemove)]
+# pivot wider:
+EEG.ml.wider = pivot_wider (EEG.ml.wider,
+             names_from = Condition,
+             values_from = c(Theta, Late.Theta, Alpha, ILE, RLE, WIN_Score))
+apply(is.na(EEG.ml.wider), 2, which) # Which variables have NAs? 
+```
+
+
+
+## Test Train split
+
+```{r}
+
+# sub.names = unique(EEG.ml$Sub)
+
+# set.seed(100)
+# test.obs = sample(sub.names, size = length(sub.names)*.2 ) # take 20% of data set obs
+# Need random sample with 2 from both older groups: 
+test.obs = c("YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07")
+# #make sure test.obs is consistent:
+# if (sum(test.obs %in% c("YN_17", "YN_37", "YN_39", "YN_24", "YN_19", "YN_35")) == 6){
+#   paste('test.obs is consisitent')
+#   }else{
+#     stop('test.obs is not consistent')
+#   }
+# print(test.obs)
+# print( c("YN_17", "YN_37", "YN_39", "YN_24", "YN_19", "YN_35"))
+
+# Split will all SNRs:
+EEG.db = list()
+EEG.db[['train']] =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
+EEG.db[['test']] =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# remove Subs in test.obs
+```
+
+Test sample includes: "YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07"
+```{r, eval=FALSE, echo=FALSE}
+
+
+
+
+for (i in seq_along(EEG.db)) {
+  EEG.db
+  print(ggplot (EEG.db[['train']], aes(x=Late.Theta))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+print(ggplot (EEG.db[['train']], aes(x=Alpha))+ 
+ geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666"))
+
+# # carry out log transform:
+# EEG.ml.list[[i]][[this.theta]] = log(EEG.ml.list[[i]][[this.theta]])
+# EEG.ml.list[[i]][[this.alpha]] = log(EEG.ml.list[[i]][[this.alpha]])
+# 
+# print(ggplot (EEG.ml.list[[i]], aes_string(x=this.theta))+ 
+#  geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+#  geom_density(alpha=.2, fill="#FF6666"))
+# print(ggplot (EEG.ml.list[[i]], aes_string(x=this.alpha))+ 
+#  geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
+#  geom_density(alpha=.2, fill="#FF6666"))
+}
+```
+
+
+### Test model for multicolliniearty 
+
+```{r}
+Unwanted = c( 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+wanted = c('MoCA', 'L4000','Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
+
+
+# Build linear model
+model1 <- lm(Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
+# Make predictions
+predictions <- model1 %>% predict(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR),
+  R2 = R2(predictions,EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR)
+)
+
+try(
+car::vif(model1))
+alias_list = rownames(alias(model1)[["Complete"]])
+
+# test new model without alias variables: 
+
+Unwanted = c(Unwanted, alias_list)
+# Build linear model
+model1 <- lm(Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
+# Make predictions
+predictions <- model1 %>% predict(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR),
+  R2 = R2(predictions,EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR)
+)
+
+try(
+car::vif(model1))
+## 
+length(model1) > model1$rank
+```
+
+
+### Examine variables to find most important: 
+
+To perform lasso regression, we’ll use functions from the glmnet package. This package requires the response variable to be a vector and the set of predictor variables to be of the class data.matrix.
+
+Next, we’ll use the glmnet() function to fit the lasso regression model and specify alpha=1.
+Note that setting alpha equal to 0 is equivalent to using ridge regression and setting alpha to some value between 0 and 1 is equivalent to using an elastic net. 
+
+To determine what value to use for lambda, we’ll perform k-fold cross-validation and identify the lambda value that produces the lowest test mean squared error (MSE).
+
+Note that the function cv.glmnet() automatically performs k-fold cross validation using k = 6 folds.
+
+
+```{r}
+Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+
+Multico = c('Ceiling.SNR','RLE.d1', 'WIN_Score_16')
+Unwanted = c(Unwanted, Multico, alias_list)
+
+  # training data set:
+  Mean.LE.SNR.train = EEG.db[['train']]$Mean.LE.SNR # make output variable
+  Predictors.train = data.matrix(EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted]) # make parameters matrix
+  # test data set
+  Mean.LE.SNR.test = EEG.db[['test']]$Mean.LE.SNR # make output variable
+  Predictors.test = data.matrix(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]) # make parameters matrix
+  
+  lambda_seq = 10^seq(2, -2, by = -.1)
+  EEG.lasso = cv.glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, nfolds = 6, lambda = lambda_seq ) # run 5-fold cross-validation of lasso
+  # Find optimal lambda value to minimize MSE
+  print(EEG.lasso$lambda.min)
+  # plot test MSE by lambda value
+  print(plot( EEG.lasso ))
+  
+  # find coefficients of best model:
+  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, lambda = EEG.lasso$lambda.min)
+  EEG.best.model.coeff=  coef(best_model)
+  print( EEG.best.model.coeff)
+  print(plot(best_model, xvar = "lambda"))
+  # Rebuilding the model with best lambda value identified
+  pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = Predictors.test)
+  
+  # Find R^2
+  rss = sum((pred -  Mean.LE.SNR.test )^2)
+  tss = sum(( Mean.LE.SNR.test - mean( Mean.LE.SNR.test ))^2)
+  rsq = 1-rss/tss
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+                        
+lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE_8', 'ILE_0', 'RLE_24', 'RLE_4', 'WIN_Score_24', 'WIN_Score_20')
+```
+
+
+Try Random Forest with just Lasso variables
+
+```{r}
+
+wanted = c('Mean.LE.SNR', lasso_var)
+
+  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = 5000, importance=TRUE)
+
+
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+print('Error stabalizes at around 3500 trees')
+ntree.best = 3500
+  # number of trees with lowest MSE
+paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+
+# RMSE of this optimal random forest
+paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
+pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+  
+  
+```
+
+### Regression tree output explainer: 
+%IncMSE: hold the model constant except for one variable. Using the values of that variable in the data set, randomly (permute) them in the model and get the OOB (out of bag CV) error. So, %IncMSE tells us how much randomizing the data for each variable effects the predictive power of the model. The more it effects the outcome, the more important the variable to OOB prediction, the higher the %IncMSE.
+
+IncNodePurity: at each split, you can calculate how much this split reduces node impurity (for regression trees, indeed, the difference between RSS before and after the split). This is summed over all splits for that variable, over all trees.
+
+### fine tune model:
+Parameters in tuneRF function
+The stepFactor specifies at each iteration, mtry is inflated (or deflated) by this value
+The improve specifies the (relative) improvement in OOB error must be by this much for the search to continue
+The trace specifies whether to print the progress of the search
+The plot specifies whether to plot the OOB error as function of mtry
+
+```{r}
+#From: https://www.listendata.com/2014/11/random-forest-with-r.html
+if (sum(wanted %in% c("Mean.LE.SNR" , "Education","L4000","R2000","R6000","ILE.d1","ILE_0","RLE_24","RLE_4", "WIN_Score_24", "WIN_Score_20")) == 11){
+  print('variables consistent with previous runs')
+}else{
+ warning('Variables in consistent with prevous runs, check alias_list and lasso results')
+ }
+
+
+
+mtry <- tuneRF(EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted[-1]],
+               EEG.db[['train']]$Mean.LE.SNR, ntreeTry=3500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+print(mtry)
+print(best.m)
+```
+
+
+
+```{r, eval=FALSE, echo=FALSE}
+mtry.list = 2:10
+Mean.Error = rep(0, 9)
+Avg.Result = cbind.data.frame( mtry.list, Mean.Error)
+# Let's speed things up with a data.table:
+EEG.db.train = as.data.table(EEG.db[['train']])
+EEG.db.test = as.data.table(EEG.db[['test']])
+for (i in 1:length(mtry.list)) {
+  Result = NULL
+  for (ii in 1:50) {
+     EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db.train[,..wanted], ntree = ntree.best, mtry = mtry.list[i], importance=TRUE)
+pred = predict(EEG.model, EEG.db.test[,..wanted])
+
+  # Find Test R^2
+  rss = sum((pred -  EEG.db.test$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db.test$Mean.LE.SNR - mean( EEG.db.test$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+ Result[ii] = round(rsq, digits = 3)
+  }
+ Avg.Result[i,2] = mean(Result)
+ 
+  
+  } 
+Avg.Result
+Avg.Result[which.min(Avg.Result$Mean.Error),]
+
+mtry.best = Avg.Result[which.min(Avg.Result$Mean.Error),]$mtry.list
+print(mtry.best)
+```
+
+Now run the model with the best of trees and variables to try
+
+```{r}
+
+EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted], ntree = ntree.best, mtry = best.m, importance=TRUE)
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+print('Error stabalizes at around 3500 trees')
+
+paste('RMSE of 3500 tree model = ', sqrt(EEG.model$mse[3500]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
+pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+  paste('Test R Squared = ', round(rsq, digits = 3))
+  plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) )
+    # Find Test RMSE
+  MRSE = sqrt(mean((pred -  EEG.db[['test']]$Mean.LE.SNR)^2))
+  paste('Test RMSE = ',round(MRSE, digits = 3))
+  
+```
+
+Compare to linear model
+
+```{r}
+EEG.lm.model = lm(Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted])
+
+  # model output
+  EEG.lm.model
+  # plot tree error
+  plot(EEG.lm.model)
+
+pred = predict(EEG.lm.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
+
+  # Find Test R^2
+  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
+  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
+  rsq = 1-rss/tss
+  print(paste('Test R Squared = ', round(rsq, digits = 3)))
+  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
+    # Find Test RMSE
+  MRSE = sqrt(mean((pred -  EEG.db[['test']]$Mean.LE.SNR)^2))
+  paste('Test RMSE = ',round(MRSE, digits = 3))
+```
+
+A linear model has a $$R^2 = -0.424$$ $$Test RMSE =  4.797$$ the random forest has typical $$R^2 = 0.45$$ and $$Test RMSE =  2.966$$  This shows that the data are non-linear and that a random forest approach can better capture and predict the Mean LE SNR outcome. 
+
