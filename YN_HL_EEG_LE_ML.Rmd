@@ -7,7 +7,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r, echo=FALSE, results='hide', warning=FALSE, message=FALSE}
+```{r, results='hide', warning=FALSE, message=FALSE}
 library(plyr)
 #library(papeR)
 library(dplyr)
@@ -52,10 +52,6 @@ Phrase_filename = "PhraseTrialArray_Ep_-0.8_0.csv"
 
 Late_filename ="LateTrialArray_Ep_0.4_1.1.csv"
 
-# PTA_Demo_Raw=read.csv( "EEG_LE_Data_N=34_PTA_Demo.csv") # PTA and Demo are in with older data set. 
-
-## load in Self-Report and PC data
-# PC_SR_Raw=read.csv( "EEG_LE_Data_N=34_RLE_ILE.csv") # Also in with older data. 
 
 plot_finish =   theme_classic()+
   theme(plot.title = element_text(color= 'black',face='bold',size=18))+
@@ -76,7 +72,16 @@ theme(legend.position="none")+
           # width of tick marks in mm
           axis.ticks = element_line(size = .8))
 
-
+  find.r2 = function(pred, test){
+    print(paste('Test R Squared = ', round(R2(pred,test), digits = 3)))
+    # Find Test RMSE
+    MRSE = sqrt(mean((pred -  test)^2))
+    print(paste('Test RMSE = ',round(MRSE, digits = 3)))
+    val.min = min(c(pred, test))
+    val.max = max(c(pred, test))
+    plot(test,pred, abline(coef = c(0,1)), ylim = c(val.min, val.max), xlim = c(val.min, val.max) )
+                    
+  }
 ```
 
 ## Import Behavioral data 
@@ -201,7 +206,7 @@ for (i in Groups) {
   Late_list[[i]]$Group = i #assign Group name
   Late_list[[i]] = na.omit(Late_list[[i]], cols='T2') # remove rows with NA 
 }
-Late= rbindlist(Word_list) # row bind the lists
+Late= rbindlist(Late_list) # row bind the lists
 # Epoch list of all EEG data
 Epoch_List_Raw = list('Phrase'= Phrase, 'Word' = Word, 'Late' = Late)
 # rm unused data:
@@ -599,53 +604,24 @@ EEG_LE_Avg= Epoch_List[[i]]%>%dplyr::group_by(Sub,Run,Condition, SNR)%>%dplyr::s
 # merge data sets
 EEG_PC_SR = merge(EEG_LE_Avg, PC_SR, all=T)
 
-## collapse across Run???
-#  try what this post said: https://stackoverflow.com/questions/31060105/dplyr-dealing-with-nas-while-calculating-mean-summarize-each-on-group-by-obje
-# Notice the %<>% to replace data that is entered...
+## collapse across Run
 EEG_PC_SR%<>%group_by(Sub, Condition)%>% summarise_each(funs(mean(., na.rm = TRUE)))
 
 # remove Run column
 EEG_PC_SR=within(EEG_PC_SR,rm(Run))
 
 # # Split Baseline from WIN 
-# EEG_Baseline=EEG_PC_SR%>%dplyr::select(Sub,Condition, Theta, Alpha, ILE, RLE, LISN.Correct) %>%
-#   dplyr::filter(Condition %in% c("Eyes_Open", "Eyes_Closed", "Countdown", "LISN"))
 
 EEG_WIN=EEG_PC_SR%>%dplyr::select(Sub,Condition, SNR,Theta, Alpha, ILE, RLE, WIN_Score) %>%
   dplyr::filter(Condition %in% c("24", "20", "16", "12", "8", "4", "0"))
 EEG_WIN$SNR_plot <- factor(EEG_WIN$Condition, levels=c("24","20","16","12", "8", "4","0")) 
 
-# Subjective addition Effort
-# EEG_WIN$SAE =  (EEG_WIN$ILE - EEG_WIN$RLE)
-
-# Performance Corrected Effort
-# EEG_WIN$PCE=EEG_WIN$ILE -(2* (5- EEG_WIN$WIN_Score))
-
-# SNR and Performance (Neuroeconomic )
 
 EEG_WIN$SNR_num = as.numeric(as.character( EEG_WIN$Condition))
 
-# EEG_WIN$SNR_inver = abs( EEG_WIN$SNR_num - 24)
-# EEG_WIN$Neuroeconomic =((EEG_WIN$SNR_inver/2.4) - (2* (5- EEG_WIN$WIN_Score))) + EEG_WIN$SAE
-
-# Proxy tests: 
-# EEG_WIN$Proxy1=((EEG_WIN$SNR_inver/2.4) - (EEG_WIN$ILE) - (2* (5- EEG_WIN$WIN_Score))) 
-
-
-# # spread one key across multiple value columns 
-# # https://community.rstudio.com/t/spread-with-multiple-value-columns/5378
-# EEG_Baseline= EEG_Baseline%>%gather(variable, value, -(Sub:Condition))%>%
-#                             unite(temp, Condition, variable)%>%
-#                             spread(temp, value)
-# # remove columns filled with NA
-# EEG_Baseline= EEG_Baseline%>% select_if(~sum(!is.na(.)) > 0)
-# colnames(EEG_Baseline)[colnames(EEG_Baseline)=="LISN_LISN.Correct"] = "LISN.Correct"
 
 #merge with PTA Demo
 EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN, PTA_Demo)
-
-#merge for ML in YN only:
-# EEG_WIN_PTA_ML[[i]]=merge(EEG_WIN,PTA_Demo_Raw)
 }
 
 ```
@@ -808,40 +784,12 @@ EEG.db[['test']] =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# remove Subs 
 ```
 
 Test sample includes: "YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07"
-```{r, eval=FALSE, echo=FALSE}
-
-
-
-
-for (i in seq_along(EEG.db)) {
-  EEG.db
-  print(ggplot (EEG.db[['train']], aes(x=Late.Theta))+ 
- geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
- geom_density(alpha=.2, fill="#FF6666"))
-print(ggplot (EEG.db[['train']], aes(x=Alpha))+ 
- geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
- geom_density(alpha=.2, fill="#FF6666"))
-
-# # carry out log transform:
-# EEG.ml.list[[i]][[this.theta]] = log(EEG.ml.list[[i]][[this.theta]])
-# EEG.ml.list[[i]][[this.alpha]] = log(EEG.ml.list[[i]][[this.alpha]])
-# 
-# print(ggplot (EEG.ml.list[[i]], aes_string(x=this.theta))+ 
-#  geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
-#  geom_density(alpha=.2, fill="#FF6666"))
-# print(ggplot (EEG.ml.list[[i]], aes_string(x=this.alpha))+ 
-#  geom_histogram(binwidth = 0.3, aes(y=..density..), colour="black", fill="white")+
-#  geom_density(alpha=.2, fill="#FF6666"))
-}
-```
-
 
 ### Test model for multicolliniearty 
 
 ```{r}
-Unwanted = c( 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
+Unwanted = c( 'Sub', 'Group',"Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
              "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
-wanted = c('MoCA', 'L4000','Ceiling.SNR','RLE.d1','WIN_Score_16','Mean.LE.SNR' )
 
 
 # Build linear model
@@ -849,6 +797,7 @@ model1 <- lm(Mean.LE.SNR ~ .,
                          data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
 # Make predictions
 predictions <- model1 %>% predict(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
+
 # Model performance
 data.frame(
   RMSE = RMSE(predictions, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR),
@@ -860,13 +809,14 @@ car::vif(model1))
 alias_list = rownames(alias(model1)[["Complete"]])
 
 # test new model without alias variables: 
-
 Unwanted = c(Unwanted, alias_list)
+
 # Build linear model
 model1 <- lm(Mean.LE.SNR ~ ., 
                          data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
 # Make predictions
 predictions <- model1 %>% predict(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
+
 # Model performance
 data.frame(
   RMSE = RMSE(predictions, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR),
@@ -879,8 +829,42 @@ car::vif(model1))
 length(model1) > model1$rank
 ```
 
+Try Random Forest with all variables
+
+```{r, fig.width=7, fig.height=8 }
+
+# Filter out unwanted variables: 
+  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], ntree = 4000, importance=TRUE)
+
+
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+print('Error stabalizes at around 2000 trees')
+ntree.best = 2000
+#   # number of trees with lowest MSE
+# paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
+# 
+# # RMSE of this optimal random forest
+# paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
+
+# plot(EEG.model$importance)
+
+varImpPlot(EEG.model)
+
+pred = predict(EEG.model, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
+
+  # Find Test R^2
+  find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
+
+```
+
 
 ### Examine variables to find most important: 
+
 Look at lasso and parameter tuning: https://uc-r.github.io/random_forests
 I could try boosting: https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
 
@@ -897,11 +881,11 @@ Note that the function cv.glmnet() automatically performs k-fold cross validatio
 
 
 ```{r}
-Unwanted = c('Mean.LE.SNR', 'Sub', "Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak",  "Theta_24","Theta_20","Theta_16","Theta_12", "Theta_8", "Theta_4","Theta_0","Late.Theta_24", "Late.Theta_20", "Late.Theta_16", "Late.Theta_12", "Late.Theta_8" , "Late.Theta_4",
-             "Late.Theta_0",  "Alpha_24","Alpha_20","Alpha_16","Alpha_12","Alpha_8","Alpha_4","Alpha_0")
+# Add output variable to Unwanted variables list for lasso
+Unwanted = c('Mean.LE.SNR', Unwanted)
 
-Multico = c('Ceiling.SNR','RLE.d1', 'WIN_Score_16')
-Unwanted = c(Unwanted, Multico, alias_list)
+# Multico = c('Ceiling.SNR','RLE.d1', 'WIN_Score_16')
+# Unwanted = c(Unwanted, Multico, alias_list)
 
   # training data set:
   Mean.LE.SNR.train = EEG.db[['train']]$Mean.LE.SNR # make output variable
@@ -926,13 +910,11 @@ Unwanted = c(Unwanted, Multico, alias_list)
   pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = Predictors.test)
   
   # Find R^2
-  rss = sum((pred -  Mean.LE.SNR.test )^2)
-  tss = sum(( Mean.LE.SNR.test - mean( Mean.LE.SNR.test ))^2)
-  rsq = 1-rss/tss
-  print(paste('Test R Squared = ', round(rsq, digits = 3)))
-  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
-                        
-lasso_var = c('Education', 'L4000', 'R2000', 'R6000', 'ILE_8', 'ILE_0', 'RLE_24', 'RLE_4', 'WIN_Score_24', 'WIN_Score_20')
+  find.r2(pred, Mean.LE.SNR.test)
+
+lasso_var = rownames(EEG.best.model.coeff)[EEG.best.model.coeff[,1] !=0]
+lasso_var = lasso_var[-1] # remove 'intercept' from vector
+print(lasso_var)
 ```
 
 
@@ -951,27 +933,14 @@ wanted = c('Mean.LE.SNR', lasso_var)
   EEG.model
   # plot tree error
   plot(EEG.model)
-print('Error stabalizes at around 3500 trees')
-ntree.best = 3500
-  # number of trees with lowest MSE
-paste('Number of trees in a model with the lowest MSE =', which.min(EEG.model$mse))
-
-# RMSE of this optimal random forest
-paste('RMSE of this optimal model = ', sqrt(EEG.model$mse[which.min(EEG.model$mse)]))
-
-# plot(EEG.model$importance)
 
 varImpPlot(EEG.model)
 
 pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
 
   # Find Test R^2
-  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
-  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
-  rsq = 1-rss/tss
-  print(paste('Test R Squared = ', round(rsq, digits = 3)))
-  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
-  
+  find.r2(pred, EEG.db[['test']]$Mean.LE.SNR)
+ 
   
 ```
 
@@ -979,6 +948,117 @@ pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wante
 %IncMSE: hold the model constant except for one variable. Using the values of that variable in the data set, randomly (permute) them in the model and get the OOB (out of bag CV) error. So, %IncMSE tells us how much randomizing the data for each variable effects the predictive power of the model. The more it effects the outcome, the more important the variable to OOB prediction, the higher the %IncMSE.
 
 IncNodePurity: at each split, you can calculate how much this split reduces node impurity (for regression trees, indeed, the difference between RSS before and after the split). This is summed over all splits for that variable, over all trees.
+
+#### Elastic-Net
+```{r}
+# From https://daviddalpiaz.github.io/r4sl/elastic-net.html
+# Train n= 42, 6 folds give 7 results
+get_best_result = function(caret_fit) {
+  best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
+  best_result = caret_fit$results[best, ]
+  rownames(best_result) = NULL
+  best_result
+}
+set.seed(42)
+cv_6 = trainControl(method = "cv", number = 6)
+el.net.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
+                           RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
+for (i in 1:50){
+
+
+el.net = train(Mean.LE.SNR ~., data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted[-1]], 
+               method = "glmnet", trControl = cv_6)
+el.net.result[i,]= get_best_result(el.net)[1,1:4]
+}
+
+summary(el.net.result)
+print('how often was alpha == 1?')
+ sum(el.net.result$alpha == 1)/50
+ 
+ # New model with best results
+  # find coefficients of best model:
+  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = .55, lambda = 0.5768)
+  EEG.best.model.coeff=  coef(best_model)
+  print( EEG.best.model.coeff)
+  print(plot(best_model, xvar = "lambda"))
+  # Rebuilding the model with best lambda value identified
+  pred <- predict( best_model, newx = Predictors.test)
+  
+  # Find R^2
+
+  find.r2(pred, Mean.LE.SNR.test)
+
+  plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
+  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
+    geom_point(size = 4, alpha = .7)+
+    geom_smooth(method = 'lm')
+  
+  el.net.var = rownames(EEG.best.model.coeff)[EEG.best.model.coeff[,1] !=0]
+  el.net.var = el.net.var[-1] # remove 'intercept' from vector
+  print(el.net.var)
+                        
+```
+
+Try random forest with elastic net variables
+```{r}
+
+EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
+                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', el.net.var)], ntree = 5000, importance=TRUE)
+
+
+
+  # model output
+  EEG.model
+  # plot tree error
+  plot(EEG.model)
+
+  varImpPlot(EEG.model)
+
+pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', el.net.var)])
+
+  # Find Test R^2
+  find.r2(pred, EEG.db[['test']]$Mean.LE.SNR)
+   plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
+  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
+    geom_point(size = 4, alpha = .7)+
+    geom_smooth(method = 'lm')
+```
+
+Now try a larger model search with all interactions and 10 alpha values.
+
+```{r}
+el.net.inter = train(Mean.LE.SNR ~.^2, data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted[-1]], 
+               method = "glmnet", trControl = cv_6, tuneLength = 10)
+
+
+
+get_best_result(el.net.inter)
+
+# New model with best results
+  # find coefficients of best model:
+  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = get_best_result(el.net.inter)$alpha, lambda = get_best_result(el.net.inter)$lambda)
+  EEG.best.model.coeff=  coef(best_model)
+  print( EEG.best.model.coeff)
+  print(plot(best_model, xvar = "lambda"))
+  # Rebuilding the model with best lambda value identified
+  pred <- predict( best_model, newx = Predictors.test)
+  
+  # Find R^2
+
+  find.r2(pred, Mean.LE.SNR.test)
+
+  plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
+  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
+    geom_point(size = 4, alpha = .7)+
+    geom_smooth(method = 'lm')
+  
+  el.net.inter.var = rownames(EEG.best.model.coeff)[EEG.best.model.coeff[,1] !=0]
+  el.net.inter.var = el.net.inter.var[-1] # remove 'intercept' from vector
+  print(el.net.inter.var)
+  
+
+```
+
 
 ### fine tune model:
 Parameters in tuneRF function
@@ -989,13 +1069,6 @@ The plot specifies whether to plot the OOB error as function of mtry
 
 ```{r}
 #From: https://www.listendata.com/2014/11/random-forest-with-r.html
-if (sum(wanted %in% c("Mean.LE.SNR" , "Education","L4000","R2000","R6000","ILE.d1","ILE_0","RLE_24","RLE_4", "WIN_Score_24", "WIN_Score_20")) == 11){
-  print('variables consistent with previous runs')
-}else{
- warning('Variables in consistent with prevous runs, check alias_list and lasso results')
- }
-
-
 
 mtry <- tuneRF(EEG.db[['train']][colnames(EEG.db[['train']]) %in% wanted[-1]],
                EEG.db[['train']]$Mean.LE.SNR, ntreeTry=3500,
@@ -1060,15 +1133,9 @@ varImpPlot(EEG.model)
 pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
 
   # Find Test R^2
-  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
-  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
-  rsq = 1-rss/tss
-  paste('Test R Squared = ', round(rsq, digits = 3))
-  plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) )
-    # Find Test RMSE
-  MRSE = sqrt(mean((pred -  EEG.db[['test']]$Mean.LE.SNR)^2))
-  paste('Test RMSE = ',round(MRSE, digits = 3))
-  
+  find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
+ 
+
 ```
 
 Compare to linear model
@@ -1085,14 +1152,8 @@ EEG.lm.model = lm(Mean.LE.SNR ~ .,
 pred = predict(EEG.lm.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% wanted])
 
   # Find Test R^2
-  rss = sum((pred -  EEG.db[['test']]$Mean.LE.SNR )^2)
-  tss = sum(( EEG.db[['test']]$Mean.LE.SNR - mean( EEG.db[['test']]$Mean.LE.SNR ))^2)
-  rsq = 1-rss/tss
-  print(paste('Test R Squared = ', round(rsq, digits = 3)))
-  print(plot(Mean.LE.SNR.test,pred, abline(coef = c(0,1)), ylim = c(10, 24), xlim = c(10, 24) ))
-    # Find Test RMSE
-  MRSE = sqrt(mean((pred -  EEG.db[['test']]$Mean.LE.SNR)^2))
-  paste('Test RMSE = ',round(MRSE, digits = 3))
+find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
+
 ```
 
 A linear model has a $$R^2 = -0.424$$ $$Test RMSE =  4.797$$ the random forest has typical $$R^2 = 0.45$$ and $$Test RMSE =  2.966$$  This shows that the data are non-linear and that a random forest approach can better capture and predict the Mean LE SNR outcome. 
