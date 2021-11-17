@@ -1170,6 +1170,10 @@ find.r2(pred, EEG.db[['test']]$Mean.LE.SNR, output = FALSE )
 
 
 ## Xgboost approach
+https://www.kaggle.com/rtatman/machine-learning-with-xgboost-in-r
+  https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
+  https://analyticsindiamag.com/complete-guide-to-xgboost-with-implementation-in-r/
+  https://towardsdatascience.com/implementing-an-xgboost-model-in-r-59ee1892be2f
 
 ```{r}
 # grouping variables need to be 'one hot' 
@@ -1177,8 +1181,29 @@ find.r2(pred, EEG.db[['test']]$Mean.LE.SNR, output = FALSE )
 colnames(Filter(is.factor, EEG.db.train))
 Group.Matrix.train = model.matrix(~Group-1, EEG.db.train)
 Group.Matrix.test = model.matrix(~Group-1, EEG.db.test)
+# remove group variable
+EEG.db.train[,Group :=NULL]
+EEG.db.test[,Group := NULL]
 
-# merge and change into Dmatrix 
+# merge 
+EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
+EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
 
+# get label, out outcome variable and make it separate
+train.label = EEG.db.train$Mean.LE.SNR
+EEG.db.train[, Mean.LE.SNR :=NULL]
+test.label = EEG.db.test$Mean.LE.SNR
+EEG.db.test[, Mean.LE.SNR :=NULL]
+
+# change into Dmatrix, remove all non-numberic columns (Sub)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1], label = train.label))
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1], label = test.label))
+```
+
+
+```{r}
+# train model
+modelxg = xgboost(data = EEG.dm.train, 
+                  nrounds = 2)
 ```
 
