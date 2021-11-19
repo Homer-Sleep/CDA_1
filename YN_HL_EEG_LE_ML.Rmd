@@ -27,6 +27,7 @@ library(readxl)
 library(data.table)
 library(caret)
 library(xgboost)
+library(DiagrammeR)
 
 options(scipen = 999) # turn off scientific notation. 
 
@@ -1170,12 +1171,14 @@ find.r2(pred, EEG.db[['test']]$Mean.LE.SNR, output = FALSE )
 
 
 ## Xgboost approach
-https://www.kaggle.com/rtatman/machine-learning-with-xgboost-in-r
-  https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
+  https://www.kaggle.com/rtatman/machine-learning-with-xgboost-in-r
+https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
   https://analyticsindiamag.com/complete-guide-to-xgboost-with-implementation-in-r/
   https://towardsdatascience.com/implementing-an-xgboost-model-in-r-59ee1892be2f
 
 ```{r}
+EEG.db.train = as.data.table(EEG.db[['train']])
+EEG.db.test = as.data.table(EEG.db[['test']])
 # grouping variables need to be 'one hot' 
 # find factor variables
 colnames(Filter(is.factor, EEG.db.train))
@@ -1196,14 +1199,59 @@ test.label = EEG.db.test$Mean.LE.SNR
 EEG.db.test[, Mean.LE.SNR :=NULL]
 
 # change into Dmatrix, remove all non-numberic columns (Sub)
-EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1], label = train.label))
-EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1], label = test.label))
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
 ```
-
+## Xgboost with all predictors
 
 ```{r}
 # train model
-modelxg = xgboost(data = EEG.dm.train, 
-                  nrounds = 2)
+modelxg = xgboost(data = EEG.dm.train,
+                  max.depth = 2, 
+                  nthread = 3,
+                  nrounds = 10)
+
+pred = predict(modelxg, EEG.dm.test)
+
+find.r2(pred, test.label, output = FALSE )
+
+importance_matrix <- xgb.importance(model = modelxg)
+print(importance_matrix)
+xgb.plot.importance(importance_matrix = importance_matrix)
+
 ```
 
+## Xgboost without EEG predictors
+
+```{r}
+#remove EEG vars
+EEG.db.train[, c("Alpha.d1","LTheta.d1","Alpha.peak","LTheta.peak" ) :=NULL]
+EEG.db.test[, c("Alpha.d1","LTheta.d1","Alpha.peak","LTheta.peak" ) :=NULL]
+
+# change into Dmatrix, remove all non-numberic columns (Sub)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
+```
+
+```{r}
+
+# train model
+modelxg = xgboost(data = EEG.dm.train,
+                  max.depth = 2, 
+                  nthread = 3,
+                  nrounds = 70)
+
+pred = predict(modelxg, EEG.dm.test)
+
+# R2 of test data
+find.r2(pred, test.label, output = FALSE )
+
+# importance of variables
+importance_matrix <- xgb.importance(model = modelxg)
+print(importance_matrix)
+xgb.plot.importance(importance_matrix = importance_matrix)
+
+# # plot tree
+# xgb.plot.tree(model = modelxg)
+
+```
