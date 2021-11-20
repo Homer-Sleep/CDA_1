@@ -1239,7 +1239,8 @@ EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label
 modelxg = xgboost(data = EEG.dm.train,
                   max.depth = 2, 
                   nthread = 3,
-                  nrounds = 70)
+                  booster = 'gbtree',
+                  nrounds = 188) # max.depth = 2, nrounds = 188, min MSRE = 0.2586
 
 pred = predict(modelxg, EEG.dm.test)
 
@@ -1255,3 +1256,7 @@ xgb.plot.importance(importance_matrix = importance_matrix)
 # xgb.plot.tree(model = modelxg)
 
 ```
+
+Nice turning grid example:
+https://shengyg.github.io/repository/machine%20learning/2017/02/25/Complete-Guide-to-Parameter-Tuning-xgboost.html
+https://www.hackerearth.com/practice/machine-learning/machine-learning-algorithms/beginners-tutorial-on-xgboost-parameter-tuning-r/tutorial/
