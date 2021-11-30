@@ -662,7 +662,7 @@ for (Sub.i in seq_along(Subjects)) {
     EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),]$Mean.LE.SNR = round(with(EEG.ml[with(EEG.ml, Sub == Subjects[Sub.i]),], 
                                                                    mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak))), digits = 1)
 }
-# table(EEG.ml$Mean.LE.SNR)
+ table(EEG.ml$Mean.LE.SNR)
 # Histo = hist(EEG.ml$Mean.LE.SNR)
 # Histo[['counts']] = Histo[['counts']]/7 # divide by number of conditions to get counts of subjects, data is in long format
 # plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in each predicted peak LE SNR', col = 'gray')
@@ -674,6 +674,10 @@ print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
 
 ```
 
+### Catigories of Effort:
+Minimal = 6 - 12
+Normal = 12 -18
+Above Normal = 18 - 24
 
 ### Missing additional hearing eval data in YN, therefore the data allows two approaches:
 1) YN (n=34), OHL (n=10), ONH (n=8), using hearing thresholds and self-report, no EEG data
@@ -1299,3 +1303,96 @@ xgb.plot.importance(importance_matrix = importance_matrix)
 # xgb.plot.tree(model = modelxg)
 
 ```
+
+## Catigorical approach
+```{r}
+print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
+ geom_histogram(bins = 25, color="#e9ecef", alpha=0.6, position = 'identity'))
+```
+
+
+### Catigories of Effort:
+Minimal = 6 - 12
+Normal = 12 -18
+Above Normal = 18 - 24
+
+```{r}
+EEG.db.train = as.data.table(EEG.db[['train']])
+EEG.db.test = as.data.table(EEG.db[['test']])
+
+# grouping variables need to be 'one hot' 
+# find factor variables
+colnames(Filter(is.factor, EEG.db.train))
+Group.Matrix.train = model.matrix(~Group-1, EEG.db.train)
+Group.Matrix.test = model.matrix(~Group-1, EEG.db.test)
+
+# remove group variable
+EEG.db.train[,Group :=NULL]
+EEG.db.test[,Group := NULL]
+
+# merge 
+EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
+EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
+
+# Make grouping variables for categories of effort
+EEG.db.train$Cat_Effort = as.factor(ifelse(EEG.db.train$Mean.LE.SNR <= 12, 'Minimal',
+                     ifelse(EEG.db.train$Mean.LE.SNR <= 18, 'Normal', 
+                     ifelse(EEG.db.train$Mean.LE.SNR < 24, 'Ab_Normal','Ab_Normal'))))
+
+EEG.db.test$Cat_Effort = as.factor(ifelse(EEG.db.test$Mean.LE.SNR <= 12, 'Minimal',
+                     ifelse(EEG.db.test$Mean.LE.SNR <= 18, 'Normal', 
+                     ifelse(EEG.db.test$Mean.LE.SNR < 24, 'Ab_Normal','Ab_Normal'))))
+
+# Make grouping matrix
+train.label = model.matrix(~Cat_Effort-1, EEG.db.train)
+test.label = model.matrix(~Cat_Effort-1, EEG.db.test)
+
+# # remove group variable
+# EEG.db.train[,Cat_Effort :=NULL]
+# EEG.db.test[,Cat_Effort := NULL]
+# 
+# # merge 
+# EEG.db.train = cbind(EEG.db.train, Cat_Effort.Matrix.train)
+# EEG.db.test = cbind(EEG.db.test, Cat_Effort.Matrix.test)
+
+# get label, out outcome variable and make it separate
+# train.label = EEG.db.train$Cat_Effort
+EEG.db.train[, Cat_Effort :=NULL]
+# test.label = EEG.db.test$Cat_Effort
+EEG.db.test[, Cat_Effort :=NULL]
+
+# Remove continuous outcome var
+EEG.db.train[, Mean.LE.SNR :=NULL]
+EEG.db.test[, Mean.LE.SNR :=NULL]
+
+# change into Dmatrix, remove all non-numeric columns (Sub)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)# -1 to remove Sub
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
+```
+
+
+https://www.hackerearth.com/practice/machine-learning/machine-learning-algorithms/beginners-tutorial-on-xgboost-parameter-tuning-r/tutorial/
+
+
+```{r}
+# train model
+modelxg = xgboost(data = EEG.dm.train,
+                  max.depth = 2, 
+                  nthread = 3,
+                  booster = 'gbtree',
+                  objective = "multi:softmax", # or multi:softprob
+                  nrounds = 100) # max.depth = 2, nrounds = 254, min MSRE = 3.012
+
+pred = predict(modelxg, EEG.dm.test)
+
+# R2 of test data
+find.r2(pred, test.label, output = FALSE )
+
+# importance of variables
+importance_matrix <- xgb.importance(model = modelxg)
+print(importance_matrix)
+xgb.plot.importance(importance_matrix = importance_matrix)
+
+
+```
+
