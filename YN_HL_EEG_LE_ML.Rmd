@@ -1335,17 +1335,21 @@ EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
 EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
 
 # Make grouping variables for categories of effort
-EEG.db.train$Cat_Effort = as.factor(ifelse(EEG.db.train$Mean.LE.SNR <= 12, 'Minimal',
-                     ifelse(EEG.db.train$Mean.LE.SNR <= 18, 'Normal', 
-                     ifelse(EEG.db.train$Mean.LE.SNR < 24, 'Ab_Normal','Ab_Normal'))))
+EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 12, '0',
+                     ifelse(EEG.db.train$Mean.LE.SNR <= 18, '1', 
+                     ifelse(EEG.db.train$Mean.LE.SNR < 24, '2','2'))))
 
-EEG.db.test$Cat_Effort = as.factor(ifelse(EEG.db.test$Mean.LE.SNR <= 12, 'Minimal',
-                     ifelse(EEG.db.test$Mean.LE.SNR <= 18, 'Normal', 
-                     ifelse(EEG.db.test$Mean.LE.SNR < 24, 'Ab_Normal','Ab_Normal'))))
+EEG.db.test$Cat_Effort = as.numeric(ifelse(EEG.db.test$Mean.LE.SNR <= 12, '0',
+                     ifelse(EEG.db.test$Mean.LE.SNR <= 18, '1', 
+                     ifelse(EEG.db.test$Mean.LE.SNR < 24, '2','2'))))
 
-# Make grouping matrix
-train.label = model.matrix(~Cat_Effort-1, EEG.db.train)
-test.label = model.matrix(~Cat_Effort-1, EEG.db.test)
+# # Make grouping matrix
+# train.label = model.matrix(~Cat_Effort-1, EEG.db.train)
+# test.label = model.matrix(~Cat_Effort-1, EEG.db.test)
+
+# Make label matrix
+train.label = as.matrix(EEG.db.train$Cat_Effort)
+test.label = as.matrix(EEG.db.test$Cat_Effort)
 
 # # remove group variable
 # EEG.db.train[,Cat_Effort :=NULL]
@@ -1373,15 +1377,17 @@ EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label
 
 https://www.hackerearth.com/practice/machine-learning/machine-learning-algorithms/beginners-tutorial-on-xgboost-parameter-tuning-r/tutorial/
 
+## Predict cagagory with EEG variables
 
 ```{r}
 # train model
 modelxg = xgboost(data = EEG.dm.train,
                   max.depth = 2, 
                   nthread = 3,
+                  num_class = 3,
                   booster = 'gbtree',
                   objective = "multi:softmax", # or multi:softprob
-                  nrounds = 100) # max.depth = 2, nrounds = 254, min MSRE = 3.012
+                  nrounds = 150) # max.depth = 2, nrounds = 254, min MSRE = 3.012
 
 pred = predict(modelxg, EEG.dm.test)
 
@@ -1396,3 +1402,37 @@ xgb.plot.importance(importance_matrix = importance_matrix)
 
 ```
 
+## Predict cagagory without EEG variables
+```{r}
+#remove EEG vars
+EEG.db.train[, c("Alpha.d1","LTheta.d1","Alpha.peak","LTheta.peak" ) :=NULL]
+EEG.db.test[, c("Alpha.d1","LTheta.d1","Alpha.peak","LTheta.peak" ) :=NULL]
+
+# change into Dmatrix, remove all non-numberic columns (Sub)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
+```
+
+
+```{r}
+# train model
+modelxg = xgboost(data = EEG.dm.train,
+                  max.depth = 2, 
+                  nthread = 3,
+                  num_class = 3,
+                  booster = 'gbtree',
+                  objective = "multi:softmax", # or multi:softprob
+                  nrounds = 340) # max.depth = 2, nrounds = 254, min MSRE = 3.012
+
+pred = predict(modelxg, EEG.dm.test)
+
+# R2 of test data
+find.r2(pred, test.label, output = FALSE )
+
+# importance of variables
+importance_matrix <- xgb.importance(model = modelxg)
+print(importance_matrix)
+xgb.plot.importance(importance_matrix = importance_matrix)
+
+
+```
