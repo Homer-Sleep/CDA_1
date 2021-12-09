@@ -28,6 +28,7 @@ library(data.table)
 library(caret)
 library(xgboost)
 library(DiagrammeR)
+library("Ckmeans.1d.dp") # for xgb.ggplot.importance
 
 options(scipen = 999) # turn off scientific notation. 
 
@@ -1287,7 +1288,7 @@ modelxg = xgboost(data = EEG.dm.train,
                   max.depth = 2, 
                   nthread = 3,
                   booster = 'gbtree',
-                  nrounds = 254) # max.depth = 2, nrounds = 254, min MSRE = 3.012
+                  nrounds = 260) # max.depth = 2, nrounds = 254, min MSRE = 3.012
 
 pred = predict(modelxg, EEG.dm.test)
 
@@ -1334,7 +1335,8 @@ EEG.db.test[,Group := NULL]
 EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
 EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
 
-# Make grouping variables for categories of effort
+# Make grouping variables for categories of effort 
+# Effort categories: 0= below normal, 1 = normal, 2 = above normal
 EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 12, '0',
                      ifelse(EEG.db.train$Mean.LE.SNR <= 18, '1', 
                      ifelse(EEG.db.train$Mean.LE.SNR < 24, '2','2'))))
@@ -1378,27 +1380,70 @@ EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label
 https://www.hackerearth.com/practice/machine-learning/machine-learning-algorithms/beginners-tutorial-on-xgboost-parameter-tuning-r/tutorial/
 
 ## Predict cagagory with EEG variables
+https://rpubs.com/mharris/multiclass_xgboost
+https://rstudio-pubs-static.s3.amazonaws.com/456044_9c275b0718a64e6286751bb7c60ae42a.html
 
 ```{r}
-# train model
-modelxg = xgboost(data = EEG.dm.train,
-                  max.depth = 2, 
-                  nthread = 3,
-                  num_class = 3,
-                  booster = 'gbtree',
-                  objective = "multi:softmax", # or multi:softprob
-                  nrounds = 150) # max.depth = 2, nrounds = 254, min MSRE = 3.012
+numberOfClasses <- length(unique(test.label))
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = numberOfClasses)
+nround    <- 175 # number of rounds
 
-pred = predict(modelxg, EEG.dm.test)
+# CV folds, how many folds
+ # length(train.label)/3
+cv.nfold  <- 7
 
-# R2 of test data
-find.r2(pred, test.label, output = FALSE )
+# Fit cv.nfold * cv.nround XGB models and save OOF predictions
+cv_model <- xgb.cv(params = xgb_params,
+                   data = EEG.dm.train, 
+                   nrounds = nround,
+                   nfold = cv.nfold,
+                   verbose = FALSE,
+                   prediction = TRUE)
 
-# importance of variables
-importance_matrix <- xgb.importance(model = modelxg)
-print(importance_matrix)
-xgb.plot.importance(importance_matrix = importance_matrix)
+OOF_prediction <- data.frame(cv_model$pred) %>%
+  mutate(max_prob = max.col(., ties.method = "last"),
+         label = train.label + 1)
+head(OOF_prediction)
 
+confusionMatrix(factor(OOF_prediction$max_prob),
+                factor(OOF_prediction$label),
+                mode = "everything")
+
+```
+
+Hyper-parameter tuning
+
+```{r}
+# take parameters from CV  data
+bst_model <- xgb.train(params = xgb_params,
+                       data = EEG.dm.train,
+                       nrounds = 1000, 
+                       early_stopping_rounds = 10,
+                       watchlist = list(val1 = EEG.dm.train, val2 = EEG.dm.test))
+
+
+
+# Predict hold-out test set
+test_pred <- predict(bst_model, newdata = EEG.dm.test)
+test_prediction <- matrix(test_pred, nrow = numberOfClasses,
+                          ncol=length(test_pred)/numberOfClasses) %>%
+  t() %>%
+  data.frame() %>%
+  mutate(label = test.label + 1,
+         max_prob = max.col(., "last"))
+# confusion matrix of test set
+confusionMatrix(factor(test_prediction$max_prob),
+                factor(test_prediction$label),
+                mode = "everything")
+
+# get the feature real names
+names <-  colnames(EEG.db.train[,-1])
+# compute feature importance matrix
+importance_matrix = xgb.importance(feature_names = names, model = bst_model)
+head(importance_matrix)
+xgb.ggplot.importance(importance_matrix)
 
 ```
 
@@ -1413,26 +1458,144 @@ EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.la
 EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
 ```
 
+```{r}
+numberOfClasses <- length(unique(test.label))
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = numberOfClasses)
+nround    <- 175 # number of rounds
+
+# CV folds, how many folds
+ # length(train.label)/3
+cv.nfold  <- 7
+
+# Fit cv.nfold * cv.nround XGB models and save OOF predictions
+cv_model <- xgb.cv(params = xgb_params,
+                   data = EEG.dm.train, 
+                   nrounds = nround,
+                   nfold = cv.nfold,
+                   verbose = FALSE,
+                   prediction = TRUE)
+
+OOF_prediction <- data.frame(cv_model$pred) %>%
+  mutate(max_prob = max.col(., ties.method = "last"),
+         label = train.label + 1)
+head(OOF_prediction)
+
+confusionMatrix(factor(OOF_prediction$max_prob),
+                factor(OOF_prediction$label),
+                mode = "everything")
+
+```
+
+Hyper-parameter tuning
 
 ```{r}
-# train model
-modelxg = xgboost(data = EEG.dm.train,
-                  max.depth = 2, 
-                  nthread = 3,
-                  num_class = 3,
-                  booster = 'gbtree',
-                  objective = "multi:softmax", # or multi:softprob
-                  nrounds = 340) # max.depth = 2, nrounds = 254, min MSRE = 3.012
+# take parameters from CV  data
+bst_model <- xgb.train(params = xgb_params,
+                       data = EEG.dm.train,
+                       nrounds = 1000, 
+                       early_stopping_rounds = 10,
+                       watchlist = list(val1 = EEG.dm.train, val2 = EEG.dm.test))
 
-pred = predict(modelxg, EEG.dm.test)
 
-# R2 of test data
-find.r2(pred, test.label, output = FALSE )
 
-# importance of variables
-importance_matrix <- xgb.importance(model = modelxg)
-print(importance_matrix)
-xgb.plot.importance(importance_matrix = importance_matrix)
+# Predict hold-out test set
+test_pred <- predict(bst_model, newdata = EEG.dm.test)
+test_prediction <- matrix(test_pred, nrow = numberOfClasses,
+                          ncol=length(test_pred)/numberOfClasses) %>%
+  t() %>%
+  data.frame() %>%
+  mutate(label = test.label + 1,
+         max_prob = max.col(., "last"))
+# confusion matrix of test set
+confusionMatrix(factor(test_prediction$max_prob),
+                factor(test_prediction$label),
+                mode = "everything")
 
+# get the feature real names
+names <-  colnames(EEG.db.train[,-1])
+# compute feature importance matrix
+importance_matrix = xgb.importance(feature_names = names, model = bst_model)
+head(importance_matrix)
+xgb.ggplot.importance(importance_matrix)
+
+```
+
+## Catagorical using only clinic measures
+
+```{r}
+#limit to only clinic vars
+EEG.db.train.clinic = EEG.db.train[, c("Sub", "Age","Education","MoCA","L250","L500","L1000","L2000","L3000", "L4000","L6000",
+                 "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000","PTA","HF_PTA" )]
+EEG.db.test.clinic = EEG.db.test[, c("Sub", "Age","Education","MoCA","L250","L500","L1000","L2000","L3000", "L4000","L6000",
+                 "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000","PTA","HF_PTA" )]
+
+# change into Dmatrix, remove all non-numberic columns (Sub)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train.clinic[,-1]), label = train.label)
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test.clinic[,-1]), label = test.label)
+```
+
+
+```{r}
+numberOfClasses <- length(unique(test.label))
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = numberOfClasses)
+nround    <- 175 # number of rounds
+
+# CV folds, how many folds
+ # length(train.label)/
+cv.nfold  <- 7
+
+# Fit cv.nfold * cv.nround XGB models and save OOF predictions
+cv_model <- xgb.cv(params = xgb_params,
+                   data = EEG.dm.train, 
+                   nrounds = nround,
+                   nfold = cv.nfold,
+                   verbose = FALSE,
+                   prediction = TRUE)
+
+OOF_prediction <- data.frame(cv_model$pred) %>%
+  mutate(max_prob = max.col(., ties.method = "last"),
+         label = train.label + 1)
+head(OOF_prediction)
+
+confusionMatrix(factor(OOF_prediction$max_prob),
+                factor(OOF_prediction$label),
+                mode = "everything")
+
+```
+
+Hyper-parameter tuning
+
+```{r}
+# take parameters from CV  data
+bst_model <- xgb.train(params = xgb_params,
+                       data = EEG.dm.train,
+                       nrounds = 1000, 
+                       early_stopping_rounds = 10,
+                       watchlist = list(val1 = EEG.dm.train, val2 = EEG.dm.test))
+
+
+
+# Predict hold-out test set
+test_pred <- predict(bst_model, newdata = EEG.dm.test)
+test_prediction <- matrix(test_pred, nrow = numberOfClasses,
+                          ncol=length(test_pred)/numberOfClasses) %>%
+  t() %>%
+  data.frame() %>%
+  mutate(label = test.label + 1,
+         max_prob = max.col(., "last"))
+# confusion matrix of test set
+confusionMatrix(factor(test_prediction$max_prob),
+                factor(test_prediction$label),
+                mode = "everything")
+
+# get the feature real names
+names <-  colnames(EEG.db.train[,-1])
+# compute feature importance matrix
+importance_matrix = xgb.importance(feature_names = names, model = bst_model)
+xgb.ggplot.importance(importance_matrix)
 
 ```
