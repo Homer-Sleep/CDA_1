@@ -5,7 +5,7 @@ output: html_document
 
 ### Click [here](#ML_Context) to jump to the machine learning portion. 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r, results='hide', warning=FALSE, message=FALSE}
