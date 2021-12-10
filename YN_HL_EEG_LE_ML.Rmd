@@ -669,15 +669,21 @@ for (Sub.i in seq_along(Subjects)) {
 # plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in each predicted peak LE SNR', col = 'gray')
 
 # by Group
-print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
- geom_histogram(bins = 25, color="#e9ecef", alpha=0.6, position = 'identity'))
-
+ print(EEG.ml%>%ggplot(aes(x = Mean.LE.SNR, fill = Group ))+
+ geom_histogram(aes(y = ..count../7), bins = 25, color="#e9ecef", alpha=0.6, position = 'identity')+
+   
+    scale_y_continuous (limits = c(0,8),breaks = (0:8))+
+   # scale_x_continuous ()+
+   scale_x_reverse(limits = c(25,7),breaks = (25:7))+
+   theme_classic()+
+   ylab('Participant Count'))
+quantile(EEG.ml$Mean.LE.SNR)
 
 ```
 
 ### Catigories of Effort:
-Minimal = 6 - 12
-Normal = 12 -18
+Minimal = 6 - 4
+Normal = 14 -18
 Above Normal = 18 - 24
 
 ### Missing additional hearing eval data in YN, therefore the data allows two approaches:
@@ -1313,8 +1319,8 @@ print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
 
 
 ### Catigories of Effort:
-Minimal = 6 - 12
-Normal = 12 -18
+Minimal = 6 - 14
+Normal = 14 -18
 Above Normal = 18 - 24
 
 ```{r}
@@ -1337,11 +1343,11 @@ EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
 
 # Make grouping variables for categories of effort 
 # Effort categories: 0= below normal, 1 = normal, 2 = above normal
-EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 12, '0',
+EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 14, '0',
                      ifelse(EEG.db.train$Mean.LE.SNR <= 18, '1', 
                      ifelse(EEG.db.train$Mean.LE.SNR < 24, '2','2'))))
 
-EEG.db.test$Cat_Effort = as.numeric(ifelse(EEG.db.test$Mean.LE.SNR <= 12, '0',
+EEG.db.test$Cat_Effort = as.numeric(ifelse(EEG.db.test$Mean.LE.SNR <= 14, '0',
                      ifelse(EEG.db.test$Mean.LE.SNR <= 18, '1', 
                      ifelse(EEG.db.test$Mean.LE.SNR < 24, '2','2'))))
 
