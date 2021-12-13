@@ -1605,3 +1605,156 @@ importance_matrix = xgb.importance(feature_names = names, model = bst_model)
 xgb.ggplot.importance(importance_matrix)
 
 ```
+
+## Bimodel model:
+### Catigories of Effort:
+
+Normal = 6 -18
+Above Normal = 18 - 24
+
+```{r}
+EEG.db.train = as.data.table(EEG.db[['train']])
+EEG.db.test = as.data.table(EEG.db[['test']])
+
+# grouping variables need to be 'one hot' 
+# find factor variables
+colnames(Filter(is.factor, EEG.db.train))
+Group.Matrix.train = model.matrix(~Group-1, EEG.db.train)
+Group.Matrix.test = model.matrix(~Group-1, EEG.db.test)
+
+# remove group variable
+EEG.db.train[,Group :=NULL]
+EEG.db.test[,Group := NULL]
+
+# merge 
+EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
+EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
+
+# Make grouping variables for categories of effort 
+# Effort categories: 0= below normal, 1 = normal, 2 = above normal
+EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 18, '0', 
+                     ifelse(EEG.db.train$Mean.LE.SNR < 24, '1','1')))
+
+EEG.db.test$Cat_Effort = as.numeric(ifelse(EEG.db.test$Mean.LE.SNR <= 18, '0', 
+                     ifelse(EEG.db.test$Mean.LE.SNR < 24, '1','1')))
+
+# # Make grouping matrix
+# train.label = model.matrix(~Cat_Effort-1, EEG.db.train)
+# test.label = model.matrix(~Cat_Effort-1, EEG.db.test)
+
+# Make label matrix
+train.label = as.matrix(EEG.db.train$Cat_Effort)
+test.label = as.matrix(EEG.db.test$Cat_Effort)
+
+# # remove group variable
+# EEG.db.train[,Cat_Effort :=NULL]
+# EEG.db.test[,Cat_Effort := NULL]
+# 
+# # merge 
+# EEG.db.train = cbind(EEG.db.train, Cat_Effort.Matrix.train)
+# EEG.db.test = cbind(EEG.db.test, Cat_Effort.Matrix.test)
+
+# get label, out outcome variable and make it separate
+# train.label = EEG.db.train$Cat_Effort
+EEG.db.train[, Cat_Effort :=NULL]
+# test.label = EEG.db.test$Cat_Effort
+EEG.db.test[, Cat_Effort :=NULL]
+
+# Remove continuous outcome var
+EEG.db.train[, Mean.LE.SNR :=NULL]
+EEG.db.test[, Mean.LE.SNR :=NULL]
+```
+
+## Catagorical using only clinic measures
+
+```{r}
+#limit to only clinic vars
+EEG.db.train.clinic = EEG.db.train[, c("Sub", "Age","Education","MoCA","L250","L500","L1000","L2000","L3000", "L4000","L6000",
+                 "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000","PTA","HF_PTA" )]
+EEG.db.test.clinic = EEG.db.test[, c("Sub", "Age","Education","MoCA","L250","L500","L1000","L2000","L3000", "L4000","L6000",
+                 "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000","PTA","HF_PTA" )]
+
+# change into Dmatrix, remove all non-numberic columns (Sub)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train.clinic[,-1]), label = train.label)
+EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test.clinic[,-1]), label = test.label)
+```
+
+
+```{r}
+numberOfClasses <- length(unique(test.label))
+xgb_params <- list("objective" = "binary:logistic", 
+                   "eval_metric" = "logloss")
+nround    <- 175 # number of rounds
+
+# CV folds, how many folds
+ # length(train.label)/
+cv.nfold  <- 7
+
+# Fit cv.nfold * cv.nround XGB models and save OOF predictions
+cv_model <- xgb.cv(params = xgb_params,
+                   data = EEG.dm.train, 
+                   nrounds = nround,
+                   nfold = cv.nfold,
+                   verbose = FALSE,
+                   prediction = TRUE)
+
+OOF_prediction <- data.frame(cv_model$pred) %>%
+  mutate(max_prob = max.col(., ties.method = "last"),
+         label = train.label + 1)
+head(OOF_prediction)
+
+confusionMatrix(factor(OOF_prediction$max_prob),
+                factor(OOF_prediction$label),
+                mode = "everything")
+
+```
+
+Hyper-parameter tuning
+
+```{r}
+# take parameters from CV  data
+bst_model <- xgb.train(params = xgb_params,
+                       data = EEG.dm.train,
+                       nrounds = 1000, 
+                       early_stopping_rounds = 10,
+                       watchlist = list(val1 = EEG.dm.train, val2 = EEG.dm.test))
+
+
+
+# Predict hold-out test set
+test_pred <- predict(bst_model, newdata = EEG.dm.test)
+
+prediction = as.numeric(test_pred > 0.5)
+
+# confusion matrix of test set
+confusionMatrix(factor(prediction),
+                factor(test.label),
+                mode = "everything")
+
+# get the feature real names
+names <-  colnames(EEG.db.train[,-1])
+# compute feature importance matrix
+importance_matrix = xgb.importance(feature_names = names, model = bst_model)
+xgb.ggplot.importance(importance_matrix)
+
+```
+
+## Compare to logistic regression
+
+```{r}
+EEG.db.train.clinic$label = train.label
+EEG.db.test.clinic$label = test.label
+
+EEG.lm.model = lm(label ~ ., data=EEG.db.train.clinic[,-1], family = 'binomial')
+pred = predict(EEG.lm.model, EEG.db.test.clinic, type = 'response')
+
+prediction = as.numeric(pred > 0.5)
+
+# confusion matrix of test set
+confusionMatrix(factor(prediction),
+                factor(test.label),
+                mode = "everything")
+
+
+```
+
