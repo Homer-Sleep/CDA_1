@@ -588,10 +588,35 @@ print(kable(T_Result, format = "html", escape = F ) %>%
   kable_styling( full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:nrow(T_Result),color = "black"))
-
-
+____________________________________________________
+# create variable to go through anova data frame and select the models that are significant for Holms correction and tables. 
+Anova.result = T_Result
+holmsB = function(Anova.result){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
+  model.names = row.names(Anova.result)
+  for (this.model in model.names) {
+    
+    
+  }
+  
+  tTable = summary(this.model)[['tTable']]
+  # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
+  k = nrow(tTable)-1
+  X = matrix(0, nrow(tTable), ncol = 3)
+  colnames(X) = c('rank','Adj.α','Adj.p')
+  tTable = cbind(tTable, X)
+  tTable[2:nrow(tTable),6]= rank(tTable[2:nrow(tTable),5])
+  tTable[,8]= (1+k - tTable[,6]) * tTable[,5] # (1+k−i)∗pi -- k = comparisons; i = rank ascending, pi = given p-value
+  tTable[,7] = 0.05/(1+k - tTable[,6])
+  return(tTable)
+}
 # summary(WIN_Score_SNR)
 summary(WIN_Score_Group_SNR)
+
+Result = holmsB(summary(ILE_Group_SNR)[['tTable']])
+(kable(Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Result),color = "black"))
 
 
 ```
