@@ -123,7 +123,67 @@ theme(legend.position="none")+
           # width of tick marks in mm
           axis.ticks = element_line(size = .8))
 
-   
+holmsB_GLMM = function(T_Result, Table.Omnibus = F, Table.holms = T, alpha.level = 0.05){ 
+  # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) with kable output
+  # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
+
+  # table Omnibus results:
+  if (Table.Omnibus == T){
+    print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+  }
+  
+  # post-hoc adjustment within linear model:
+  Modelname = rownames(T_Result)
+  for (holms_i in 2:(nrow(T_Result))){
+  if (T_Result[holms_i,9] > alpha.level){ next} # next iteration if omnibus > alpha.level
+  tTable = (summary(get(Modelname[holms_i]))[['tTable']]) # retrieve tTable from linear model lme()
+  k = nrow(tTable)-1 # get number of variables in model
+  X = matrix(0, nrow(tTable), ncol = 4) # empty matrix for new info
+  colnames(X) = c('rank','Adj.α','Adj.p', 'Significant')
+  tTable = as.data.frame(cbind(tTable, X)) #make data.frame as ifelse() below and indexing didn't work for matrix
+  tTable[2:nrow(tTable),6]= rank(tTable[2:nrow(tTable),5]) # rank() numbers items in ascending order
+  # (1+k−i)∗pi ; k = comparisons; i = rank ascending, pi = given p-value
+  tTable[,8]= (1+k - tTable[,6]) * tTable[,5] # new adjusted alpha level
+  tTable[,7] = alpha.level/(1+k - tTable[,6]) # new adjusted p-values
+  tTable[,9] = ifelse(tTable[,8] < alpha.level, TRUE, FALSE) # label  non-sig models FALSE
+    nonSigrank = min(tTable[!tTable[,9],]$rank) # find lowest rank of non-sig models, labeled FALSE
+  # if there are non-sig models, label all with higher rank than lowest non-sig rank as non-sig
+  if (nonSigrank == Inf || nonSigrank < 1){
+    }else{
+  tTable[,9] = ifelse(tTable$rank < nonSigrank, TRUE, FALSE) 
+    }
+    tTable[1,9] = '-'
+
+  # make table or make list output:
+  if (Table.holms == T){
+  print(kable(tTable, format = "html", escape = F, caption = paste0('<b>',Modelname[holms_i],'<b>'))%>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(tTable),color = "black"))
+    }else{
+      #Make a list for each loop output
+      if (!exists ('holms.tables')){
+      holms.tables = list(tTable)
+      Table_i = 1
+      }else{
+      Table_i = Table_i + 1
+      holms.tables[[Table_i]] = tTable
+      }
+    }
+  }
+  if (exists('holms.tables')){
+    return(holms.tables)
+    }else{
+      if(Table.holms == F){
+      warning('No output found')
+      }
+    }
+}
+
+
 ```
 
 
@@ -551,6 +611,13 @@ ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor, grou
 ```
 
 ```{r, echo=FALSE,results='asis'}
+## debuging
+Epoch_List_backup = Epoch_List
+unique(Epoch_List[[1]]$Sub)
+unique(PC_SR$Sub)
+setdiff(unique(Epoch_List[[1]]$Sub), unique(PC_SR$Sub))
+setdiff(unique(PC_SR$Sub), unique(Epoch_List[[1]]$Sub))
+###
  for (i in seq_along(Epoch_List)){
 
      # WIN_Score
@@ -584,40 +651,8 @@ WIN_Score_Group_SNR_Run <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR,WIN_Score_Group_SNR_Run) 
 
-print(kable(T_Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-____________________________________________________
-# create variable to go through anova data frame and select the models that are significant for Holms correction and tables. 
-Anova.result = T_Result
-holmsB = function(Anova.result){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
-  model.names = row.names(Anova.result)
-  for (this.model in model.names) {
-    
-    
-  }
-  
-  tTable = summary(this.model)[['tTable']]
-  # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
-  k = nrow(tTable)-1
-  X = matrix(0, nrow(tTable), ncol = 3)
-  colnames(X) = c('rank','Adj.α','Adj.p')
-  tTable = cbind(tTable, X)
-  tTable[2:nrow(tTable),6]= rank(tTable[2:nrow(tTable),5])
-  tTable[,8]= (1+k - tTable[,6]) * tTable[,5] # (1+k−i)∗pi -- k = comparisons; i = rank ascending, pi = given p-value
-  tTable[,7] = 0.05/(1+k - tTable[,6])
-  return(tTable)
-}
-# summary(WIN_Score_SNR)
-summary(WIN_Score_Group_SNR)
 
-Result = holmsB(summary(ILE_Group_SNR)[['tTable']])
-(kable(Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-
+holmsB_GLMM(T_Result, Table.Omnibus = T)
 
 ```
 
@@ -636,13 +671,7 @@ WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
 
-print(kable(T_Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-cat('\n')
-
-summary(WIN_Score_SNR)
+holmsB_GLMM(T_Result, Table.Omnibus = T)
 
 
 ```
@@ -662,13 +691,7 @@ WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
 
-print(kable(T_Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-cat('\n')
-
-summary(WIN_Score_SNR)
+holmsB_GLMM(T_Result, Table.Omnibus = T)
 
 
 ```
@@ -814,24 +837,9 @@ ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=RLE, group=G
    scale_fill_manual(values = c("white", "black"))+
   #scale_color_identity(guide = "legend")+
    scale_y_continuous (limits = c(0,9),breaks = (0:9))+
-  theme_classic()+
- # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
     xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED \nSELF-REPORTED EFFORT")+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
- theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8))+
+  plot_finish+
 theme(legend.position = "none")
 
 
@@ -871,17 +879,7 @@ ILE_Group_SNR_Run <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR
 
 T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR,ILE_Group_SNR_Run) 
 
-print(kable(T_Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-
-Result = holmsB(summary(ILE_Group_SNR)[['tTable']])
-(kable(Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-
+holmsB_GLMM(T_Result, Table.Omnibus = T)
 
 ```
 
@@ -903,17 +901,7 @@ RLE_Group_SNR_Run <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
 
 T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR,RLE_Group_SNR_Run) 
 
-print(kable(T_Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-
-
-Result = holmsB(summary(RLE_Group_SNR)[['tTable']])
-(kable(Result, format = "html", escape = F ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
+holmsB_GLMM(T_Result, Table.Omnibus = T)
 ```
 
 ### Required Self-Reported Listening Effort
@@ -954,24 +942,10 @@ SelfReport_plot=ggplot()+
 
  
   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
-  theme_classic()+
+
  # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED \nSELF-REPORTED EFFORT")+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
- theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8))
+   plot_finish
    
 print(SelfReport_plot)
 ```
@@ -1015,24 +989,9 @@ SelfReport_plot=ggplot()+
 
   
   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
-  theme_classic()+
- # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("INVESTED \nSELF-REPORTED EFFORT")+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
- theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8))
+  plot_finish
    
 print(SelfReport_plot)
 ```
@@ -1159,25 +1118,7 @@ geom_line(aes(linetype='Theta', size=.8),stat="summary", fun=mean)+
     coord_cartesian(ylim=c(-1.25, .8))+
       labs(title = paste("Frequency Power of", Freq, "for", epoch_names[i_epoch]))+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme_classic()+
-
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
- theme(legend.text = element_text( size = 18, face = "bold"))+
-theme(legend.position="none")+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8)))
+  plot_finish)
   }
 }
 ```
@@ -1265,24 +1206,10 @@ ThetaParadigm_plot=ggplot()+
 
  
   # scale_y_continuous (limits = c(0,9),breaks = (0:9))+
-  theme_classic()+
+
   labs(title = "Theta by Paradigm")+
    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
- theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8))
+  plot_finish
    
 print(ThetaParadigm_plot)
 print( 'White = Random')
@@ -1362,25 +1289,7 @@ geom_line(aes(linetype='Theta', size=.8),stat="summary", fun=mean)+
   
       labs(title = paste("Frequency Power of", Freq, "for", epoch_names[i_epoch]))+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme_classic()+
- coord_cartesian(ylim=c(-1.25, .8))+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
- theme(legend.text = element_text( size = 18, face = "bold"))+
-theme(legend.position="none")+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8)))
+  plot_finish)
   }
 }
 ```
@@ -1949,25 +1858,7 @@ geom_line(aes(y=get(Theta_Freq),  group=10, linetype='Theta', size=.8),stat="sum
   
 labs(title = paste("ONH", i, "for", epoch_names[i_epoch]))+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme_classic()+
- coord_cartesian(ylim=c(-1.25, .8))+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
- theme(legend.text = element_text( size = 18, face = "bold"))+
-theme(legend.position="none")+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8)))
+  plot_finish)
   }
 }
 ```
@@ -2000,25 +1891,7 @@ print(ggplot(data=dplyr::filter(Epoch_List[[i_epoch]], Group=="OHL",!is.na(SNR_p
   
 labs(title = paste("OHL", i, "for", epoch_names[i_epoch]))+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme_classic()+
- coord_cartesian(ylim=c(-1.25, .8))+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
- theme(legend.text = element_text( size = 18, face = "bold"))+
-theme(legend.position="none")+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8)))
+  plot_finish)
   }
 }
 
@@ -2167,23 +2040,7 @@ All_Freq_Plot=ggplot()+
   
       #labs(title = "Theta Frequency Power for Correct and Incorrect")+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme_classic()+
- #coord_cartesian(ylim=c(-2, .5))+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8))
+  plot_finish
 print(All_Freq_Plot)
 ```
 
@@ -2244,23 +2101,7 @@ All_Freq_Plot=ggplot()+
   
       #labs(title = "Alpha Frequency Power for Correct and Incorrect")+
        xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")+
-  theme_classic()+
- #coord_cartesian(ylim=c(-2, .5))+
-  theme(plot.title = element_text(color= 'black',face='bold',size=18))+
-   theme(axis.title.x = element_text(color= 'black',face='bold',size=18),
-        axis.text.x = element_text(color= 'black',face='bold',size=18))+
-  theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
-        axis.text.y = element_text(color= 'black',face='bold',size=18))+
-    theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
-          # using margin was needed because of the inwards placement of ticks
-          # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
-          axis.text.x = element_text( margin = unit(c(t = 2.5, r = 0, b = 0, l = 0), "mm")),
-          # adjust Y-axis labels
-          axis.text.y = element_text( margin = unit(c(t = 0, r = 2.5, b = 0, l = 0), "mm")),
-          # length of tick marks - negative sign places ticks inwards
-          axis.ticks.length = unit(-1.4, "mm"),
-          # width of tick marks in mm
-          axis.ticks = element_line(size = .8))
+  plot_finish
 print(All_Freq_Plot)
 ```
 
