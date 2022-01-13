@@ -54,7 +54,7 @@ plot_finish =   theme_classic()+
   theme(axis.title.y = element_text(color= 'black',face='bold',size=18),
         axis.text.y = element_text(color= 'black',face='bold',size=18))+
  theme(legend.text = element_text( size = 18, face = "bold"))+
-theme(legend.position="none")+
+# theme(legend.position="none")+
     theme(# adjust X-axis labels; also adjust their position using margin (acts like a bounding box)
           # using margin was needed because of the inwards placement of ticks
           # http://stackoverflow.com/questions/26367296/how-do-i-make-my-axis-ticks-face-inwards-in-ggplot2
@@ -338,12 +338,11 @@ PC_df$PerCor = (PC_df$WIN_Score/5)*100
 ```{r, echo=FALSE, warning=FALSE, results='hide',dpi = 300, dev.args = list(png  = list(type = "cairo"))}
 # PC plot
 # PC_plot=
-  ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor))+
-   geom_point(size=4, stat="summary", fun=mean)+
-   geom_line(stat="summary", fun=mean, group=10, size=2)+
+  ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor, group = Group, shape = Group, color = Group))+
+   geom_point(stat="summary", fun=mean, size = 5)+
+   geom_line(stat="summary", fun=mean, size=2)+
   stat_summary( geom = "errorbar", fun.data = mean_se, position = "dodge", color="black",size=.8, width=.4)+
-  theme_classic()+
-  scale_y_continuous(breaks=c(20,40, 60, 80,100))+
+  scale_y_continuous(breaks=c(0, 20,40, 60, 80,100))+
    #labs(title = "Words Recognized over WIN SNR")+
     xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("WORDS RECOGNIZED \nIN % CORRECT")+
 plot_finish
