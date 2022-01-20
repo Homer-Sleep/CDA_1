@@ -92,15 +92,24 @@ knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
 #     return(res)
 # }
 
-holmsB = function(tTable){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
+holmsB = function(tTable, alpha.level = 0.05){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
   # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
   k = nrow(tTable)-1
-  X = matrix(0, nrow(tTable), ncol = 3)
-  colnames(X) = c('rank','Adj.α','Adj.p')
-  tTable = cbind(tTable, X)
-  tTable[2:nrow(tTable),6]= rank(tTable[2:nrow(tTable),5])
-  tTable[,8]= (1+k - tTable[,6]) * tTable[,5] # (1+k−i)∗pi -- k = comparisons; i = rank ascending, pi = given p-value
-  tTable[,7] = 0.05/(1+k - tTable[,6])
+  X = matrix(0, nrow(tTable), ncol = 4) # empty matrix for new info
+  colnames(X) = c('rank','Adj.α','Adj.p', 'Significant')
+  tTable = as.data.frame(cbind(tTable, X)) #make data.frame as ifelse() below and indexing didn't work for matrix
+  tTable[2:nrow(tTable),6]= rank(tTable[2:nrow(tTable),5]) # rank() numbers items in ascending order
+  # (1+k−i)∗pi ; k = comparisons; i = rank ascending, pi = given p-value
+  tTable[,8]= (1+k - tTable[,6]) * tTable[,5] # new adjusted alpha level
+  tTable[,7] = alpha.level/(1+k - tTable[,6]) # new adjusted p-values
+  tTable[,9] = ifelse(tTable[,8] < alpha.level, TRUE, FALSE) # label  non-sig models FALSE
+    nonSigrank = min(tTable[!tTable[,9],]$rank) # find lowest rank of non-sig models, labeled FALSE
+  # if there are non-sig models, label all with higher rank than lowest non-sig rank as non-sig
+  if (nonSigrank == Inf || nonSigrank < 1){
+    }else{
+  tTable[,9] = ifelse(tTable$rank < nonSigrank, TRUE, FALSE) 
+    }
+    tTable[1,9] = '-'
   return(tTable)
 }
 
@@ -488,9 +497,15 @@ PeakTable$RPA= names(PeakTable)[z]
     PeakTable$RPA_plot= gsub("$", " Hz", PeakTable$RPA)
     PeakTable$RPA_plot <- factor(PeakTable$RPA_plot, levels=c("6 Hz","7 Hz","8 Hz","9 Hz", "10 Hz", "11 Hz", "12 Hz", "13 Hz")) 
     PeakTable = merge(PeakTable, unique(dplyr::select(Epoch_List[[1]], Sub, Group)), by = "Sub", all.x = T)
+    
     PC_SR = merge(PC_SR, dplyr::select(PeakTable, Sub, RPA), by = "Sub") 
     PTA_Demo = merge(PTA_Demo, dplyr::select(PeakTable, Sub, RPA), by = "Sub") 
- 
+    PTA_Demo$Group = factor(PTA_Demo$Group, levels = c('OHL', 'ONH'))
+    names(PTA_Demo)[4] = 'Veteran'
+    PTA_Demo$Veteran = gsub('NO', 'No', PTA_Demo$Veteran)
+    factor.cols = c('Veteran','Gender', 'Ethnicity', 'Race', 'Handedness' )
+    PTA_Demo[factor.cols] = lapply(PTA_Demo[factor.cols], factor)
+    
   
 
   # EEG_LE_List = Epoch_List
@@ -612,11 +627,8 @@ ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor, grou
 
 ```{r, echo=FALSE,results='asis'}
 ## debuging
-Epoch_List_backup = Epoch_List
-unique(Epoch_List[[1]]$Sub)
-unique(PC_SR$Sub)
-setdiff(unique(Epoch_List[[1]]$Sub), unique(PC_SR$Sub))
-setdiff(unique(PC_SR$Sub), unique(Epoch_List[[1]]$Sub))
+# setdiff(unique(Epoch_List[[1]]$Sub), unique(PC_SR$Sub))
+# setdiff(unique(PC_SR$Sub), unique(Epoch_List[[1]]$Sub))
 ###
  for (i in seq_along(Epoch_List)){
 
@@ -629,6 +641,28 @@ setdiff(unique(PC_SR$Sub), unique(Epoch_List[[1]]$Sub))
    Epoch_List[[i]]$Group = factor( Epoch_List[[i]]$Group, levels = c('OHL', 'ONH'))
 
  }
+```
+
+## Demographics
+
+```{r, echo=FALSE, results = 'asis'}
+Demo.summary = describeBy (PTA_Demo, PTA_Demo$Group)
+group.demo = round(Demo.summary[[1]][c(3,8,10,30:37),c(3,4,8,9)], digits = 1)
+kable(group.demo, format = "html", escape = F, caption = 'OHL Demographics' ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(group.demo),color = "black")
+table(PTA_Demo[PTA_Demo$Group =='OHL',factor.cols[-5]]) # Only one left handed, so remove handedness with -5
+
+group.demo = round(Demo.summary[[2]][c(3,8,10,30:37),c(3,4,8,9)], digits = 1)
+
+kable(group.demo, format = "html", escape = F, caption = 'ONH Demographics' ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(group.demo),color = "black")
+
+table(PTA_Demo[PTA_Demo$Group =='ONH',factor.cols[-5]])
+
 ```
 
 ## WIN effect of SNR
