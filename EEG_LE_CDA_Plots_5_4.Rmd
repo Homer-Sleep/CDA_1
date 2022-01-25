@@ -442,8 +442,11 @@ for(ii in seq_along(Epoch_List)){
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:8,color = "black")
   
-
-    
+Components.mean = round(describe(c(5,10,13,9,5,14,1,7,5,11,10,2,7,5,7,8,6,6)), digits = 1)[,c(3,4,8,9)]
+ kable(Components.mean, row.names = F, caption = 'Components Removed')%>%
+   kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:1,color = "black")
 ```
 
     
