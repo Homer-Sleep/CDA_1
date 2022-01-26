@@ -1033,6 +1033,8 @@ SelfReport_plot=ggplot()+
 print(SelfReport_plot)
 ```
 
+## Log Transformation of skewed EEG frequency powers
+
 ```{r, echo=FALSE,warning=FALSE, fig.height = 3, fig.width = 4}
 # Hist of each,  transform required. 
 for (i_epoch in seq_along(Epoch_List)){
@@ -1123,6 +1125,40 @@ print(ggplot(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == ii),
  }
 }
 ```
+
+
+```{r echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+Groups = c('ONH', 'OHL')
+
+
+ for (i in seq_along(Freq_plot)){
+
+print(ggplot(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot)), 
+                     aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Group, shape = Frequency))+
+        geom_line(aes(size=.8),stat="summary", fun=mean)+
+        stat_summary(aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge")+
+        geom_point(aes( size = 4),stat="summary", fun=mean)+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c("black", 'black'))+
+   scale_fill_manual(values = Mycolors)+
+         
+  
+      labs(title = paste(ii, Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+    # ylab(bquote(PSD==10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .5))+
+ plot_finish)
+
+ }
+
+```
+
 
 ## Theta by group ONH=black
 ```{r echo=FALSE}
