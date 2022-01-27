@@ -65,6 +65,7 @@ library(numDeriv)
 library(pracma)
 library(formattable)
 library(lme4)
+library(audiometry)
 # library(tictoc)
 
 library(sjPlot)
@@ -750,6 +751,8 @@ scale_y_continuous(limits=c(0,1), breaks=NULL, name="") +
    theme_classic()+
 geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black"), size=4)+
   scale_fill_manual(values = "black")
+
+
 ggplot() +
 scale_x_discrete(name="") +
   geom_hline(yintercept=0, linetype="dashed", size = 1.3)+
@@ -761,6 +764,35 @@ scale_y_continuous(limits=c(0,1), breaks=NULL, name="") +
    theme_classic()+
 geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black"), size=4)+
   scale_fill_manual(values = "white")
+
+
+## Colors:
+Red.blue =  c( 'dodgerblue2', 'red2')
+white.black = c('white', 'black')
+for (this.color in Red.blue) {
+  
+
+print(ggplot() +
+scale_x_discrete(name="") +
+scale_y_continuous(limits=c(0,1), breaks=NULL, name="") +
+#scale_shape_discrete(solid=T) +
+  scale_shape_manual(values=c(22,24,25,21, 23, 22 ))+
+   theme_classic()+
+geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black"), size=4)+
+  scale_fill_manual(values = this.color))
+  
+  print(ggplot() +
+scale_x_discrete(name="") +
+scale_y_continuous(limits=c(0,1), breaks=NULL, name="") +
+#scale_shape_discrete(solid=T) +
+  scale_shape_manual(values=c(22,24,25,21, 23, 22 ))+
+   theme_classic()+
+geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black", color = this.color), size=4, stroke = 1.6)+
+  scale_fill_manual(values = 'white')+
+  scale_color_manual(values = this.color))
+  
+}
+
 ```
 
 ```{r, echo=FALSE, warning=FALSE, results='hide'}
@@ -1084,17 +1116,23 @@ print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha_IAF))+
 ## Theta and Alpha with both groups
 ```{r, echo=FALSE}
 Freq_plot = NULL
+Freq_plot_IAF = NULL
  for (i in seq_along(Epoch_List)){
    # change alpha theta
        Freq_plot[[i]] = Epoch_List[[i]]%>% dplyr::select( Sub, Theta, Alpha, SNR_plot, Group)%>%pivot_longer(cols = Theta:Alpha, 
                                            names_to = "Frequency",
                                       names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta", "Alpha"))),
                                            values_to = "Power")
+       Freq_plot_IAF[[i]] = Epoch_List[[i]]%>% dplyr::select( Sub, Theta_IAF, Alpha_IAF, SNR_plot, Group)%>%pivot_longer(cols = Theta_IAF:Alpha_IAF, 
+                                           names_to = "Frequency",
+                                      names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta_IAF", "Alpha_IAF"))),
+                                           values_to = "Power")
+        
  }
 ```
 
 
-```{r echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
 # Mycolors = c("dodgerblue2", "red2", 'gray')
@@ -1170,9 +1208,53 @@ print(ggplot()+
 
 ```
 
-
-## Theta by group ONH=black
+## IAF frequencies
 ```{r echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+# Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+# Groups = c('ONH', 'OHL')
+
+
+ for (i in seq_along(Freq_plot_IAF)){
+
+print(ggplot()+
+        aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency)+
+        
+        geom_line(data=dplyr::filter(Freq_plot_IAF[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot_IAF[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot_IAF[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                   aes( size = 3),stat="summary", fun=mean, fill = c('white'), stroke = 1.6)+
+
+        geom_line(data=dplyr::filter(Freq_plot_IAF[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot_IAF[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot_IAF[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                   aes( size = 4),stat="summary", fun=mean, color = 'black')+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c( 'dodgerblue2', 'red2'))+
+    scale_fill_manual(values = c("dodgerblue2","red2", 'white','white'))+
+         
+  
+      labs(title = paste(Epoch_Win[i],"- IAF Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+     # ylab(bquote(10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .5))+
+ plot_finish)
+
+ }
+
+```
+
+## Theta by group ONH=black eval = false 
+
+```{r, echo=FALSE, eval=FALSE}
 
 epoch_names = c( "Phrase", "Word", "Late")
 Freq_type = c("", "_IAF")
@@ -1345,7 +1427,7 @@ print(kable(Result, format = "html", escape = F,
 
 ## Alpha by group  ONH = Black
 
-```{r echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 for (i_epoch in seq_along(Epoch_List)){
   
   for(i in Freq_type){
@@ -1914,7 +1996,7 @@ for (post_i in 1:length(Models)) {
 
 ## Freq band by group
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 for (i_epoch in seq_along(Epoch_List)){
   
   for(i in Freq_type){
@@ -1947,7 +2029,7 @@ labs(title = paste("ONH", i, "for", epoch_names[i_epoch]))+
 }
 ```
 
-```{r echo=F}
+```{r, echo=F, eval=FALSE}
 for (i_epoch in seq_along(Epoch_List)){
   
   for(i in Freq_type){
