@@ -65,9 +65,8 @@ library(numDeriv)
 library(pracma)
 library(formattable)
 library(lme4)
-library(audiometry)
+library(audiometry) # for audiogram 
 # library(tictoc)
-
 library(sjPlot)
 library(emmeans)
 # library(Cairo) # Cleans up plot Alias CairoWIN() use ggsave "cairo-png"
