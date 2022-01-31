@@ -193,6 +193,38 @@ holmsB_GLMM = function(T_Result, Table.Omnibus = F, Table.holms = T, alpha.level
 }
 
 
+GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level = 0.05){ 
+   # table Omnibus results:
+  if (Table.Omnibus == T){
+    print(kable(T_Result, format = "html", escape = F ) %>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(T_Result),color = "black"))
+  }
+  
+  # find highest rank with significant p value
+  sig.model = which.max(T_Result[T_Result[,9] <= alpha.level,]$Model)
+  if (length(sig.model)== 0) {
+    print('No Significant Models found')
+    return()
+  }
+  Modelname = rownames(T_Result[sig.model,])
+
+  tTable = (summary(get(Modelname))[['tTable']]) # retrieve tTable from linear model lme()
+  X = matrix(0, nrow(tTable), ncol = 1) # empty matrix for new info
+  colnames(X) = c( 'Significant')
+  tTable = as.data.frame(cbind(tTable, X)) #make data.frame as ifelse() below and indexing didn't work for matrix
+  tTable[,6] = ifelse(tTable[,5] < alpha.level, TRUE, FALSE) # label  non-sig models FALSE
+
+  # make table or make list output:
+  if (Table.model == T){
+  print(kable(tTable, format = "html", escape = F, caption = paste0('<b>',Modelname,'<b>'))%>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(tTable),color = "black"))
+    }
+}
+GLMM_Tables(T_Result)
 ```
 
 
@@ -601,7 +633,14 @@ Audiogram = dplyr::select(PTA_Demo, Sub, Group,L250:R8000) # select audiogram in
 
     factor.cols = colnames(Audiogram[3:18]) # get names for conversion
     Audiogram[factor.cols] = lapply(Audiogram[factor.cols], as.numeric) #Convert to numeric
-    Audiogram # mean of L and R values
+    Audio.Mean = data.frame('Sub' = Audiogram$Sub, 'Group' = Audiogram$Group, 250,500,1000, 2000, 3000, 4000, 6000, 8000)
+    # mean of L and R values
+    for (i in 1:8) {
+      left.col = i+2
+      right.col = i+10
+      Audio.Mean[,i] = rowMeans(Audiogram[,c(left.col,right.col)])
+    }
+    
     #remove L&R
     
 
@@ -728,7 +767,7 @@ WIN_Score_Group_SNR_Run <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
 T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR,WIN_Score_Group_SNR_Run) 
 
 
-holmsB_GLMM(T_Result, Table.Omnibus = T)
+GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ```
 
@@ -747,7 +786,7 @@ WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
 
-holmsB_GLMM(T_Result, Table.Omnibus = T)
+GLMM_Tables(T_Result, Table.Omnibus = T)
 
 
 ```
@@ -767,7 +806,7 @@ WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
 
-holmsB_GLMM(T_Result, Table.Omnibus = T)
+GLMM_Tables(T_Result, Table.Omnibus = T)
 
 
 ```
@@ -986,7 +1025,7 @@ ILE_Group_SNR_Run <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR
 
 T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR,ILE_Group_SNR_Run) 
 
-holmsB_GLMM(T_Result, Table.Omnibus = T)
+GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ```
 
@@ -1008,7 +1047,7 @@ RLE_Group_SNR_Run <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
 
 T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR,RLE_Group_SNR_Run) 
 
-holmsB_GLMM(T_Result, Table.Omnibus = T)
+GLMM_Tables(T_Result, Table.Omnibus = T)
 ```
 
 ### Required Self-Reported Listening Effort
