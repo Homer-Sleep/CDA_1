@@ -203,8 +203,8 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
   }
   
   # find highest rank with significant p value
-  sig.model = which.max(T_Result[T_Result[,9] <= alpha.level,]$Model)
-  if (length(sig.model)== 0) {
+  sig.model = max(T_Result[T_Result[,9] <= alpha.level& !is.na(T_Result[,9]),]$Model)
+  if (sig.model== -Inf) {
     print('No Significant Models found')
     return()
   }
@@ -215,6 +215,7 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
   colnames(X) = c( 'Significant')
   tTable = as.data.frame(cbind(tTable, X)) #make data.frame as ifelse() below and indexing didn't work for matrix
   tTable[,6] = ifelse(tTable[,5] < alpha.level, TRUE, FALSE) # label  non-sig models FALSE
+  tTable[1,6] = '-'
 
   # make table or make list output:
   if (Table.model == T){
@@ -222,6 +223,8 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
   kable_styling( full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:nrow(tTable),color = "black"))
+  }else{
+      return(tTable)
     }
 }
 
@@ -682,7 +685,7 @@ kable(group.demo, format = "html", escape = F, caption = 'OHL Demographics' ) %>
   kable_styling( full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:nrow(group.demo),color = "black")
-table(PTA_Demo[PTA_Demo$Group =='OHL',factor.cols[-5]]) # Only one left handed, so remove handedness with -5
+# table(PTA_Demo[PTA_Demo$Group =='OHL',factor.cols[-5]]) # Only one left handed, so remove handedness with -5
 
 group.demo = round(Demo.summary[[2]][c(3,8,10,30:37),c(3,4,8,9)], digits = 1)
 
@@ -691,7 +694,7 @@ kable(group.demo, format = "html", escape = F, caption = 'ONH Demographics' ) %>
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:nrow(group.demo),color = "black")
 
-table(PTA_Demo[PTA_Demo$Group =='ONH',factor.cols[-5]])
+# table(PTA_Demo[PTA_Demo$Group =='ONH',factor.cols[-5]])
 
 ```
 
@@ -1391,24 +1394,10 @@ Theta_Group_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2
                  data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
 T_Result=anova(Theta_NoSNR, Theta_Group, Theta_Group_SNR,Theta_Group_SNR_Paradigm)
+print(paste("SNR effect on Theta for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
 
-print(kable(T_Result, format = "html", escape = F , caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-Models = c('Theta_Group','Theta_Group_SNR','Theta_Group_SNR_Paradigm') # exclude first model
 
-for (post_i in 1:length(Models)) {
-   iii = post_i +1
-  if (T_Result[iii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-print(kable(Result, format = "html", escape = F, 
-            caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
 }
 contrasts(Epoch_List[[1]]$Group)
 contrasts(Epoch_List[[1]]$Paradigm)
@@ -1481,24 +1470,27 @@ Theta_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm
 
 T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Theta for", Epoch_Win[i], Group_i)) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
+print(paste("SNR effect on Theta for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
 
-Models = c('Theta_SNR','Theta_SNR_Paradigm') # exclude first model
-
-for (post_i in 1:length(Models)) {
-   iii = post_i +1
-  if (T_Result[iii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-print(kable(Result, format = "html", escape = F, 
-            caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+# print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Theta for", Epoch_Win[i], Group_i)) %>%
+#   kable_styling( full_width = F)%>%
+#   column_spec(1,color="black", bold=T)%>%
+#   row_spec(0:nrow(T_Result),color = "black"))
+# 
+# Models = c('Theta_SNR','Theta_SNR_Paradigm') # exclude first model
+# 
+# for (post_i in 1:length(Models)) {
+#    iii = post_i +1
+#   if (T_Result[iii,9] < 0.05){
+#     Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+# print(kable(Result, format = "html", escape = F, 
+#             caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
+#   kable_styling( full_width = F)%>%
+#   column_spec(1,color="black", bold=T)%>%
+#   row_spec(0:nrow(Result),color = "black"))
+#   }
+# }
 
  }
 }
@@ -1557,10 +1549,8 @@ Alpha_Group <- lme((Alpha) ~ Group, random=~1|Sub,
 
 T_Result=anova(Alpha_NoSNR, Alpha_Group)
 
-print(kable(T_Result, format = "html", escape = F , caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
+print(paste("SNR effect on Alpha for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
 }
 
 
@@ -1585,24 +1575,28 @@ Alpha_SNR_Paradigm <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm
 
 T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Alpha for", Epoch_Win[i], Group_i)) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-
-Models = c('Alpha_SNR','Alpha_SNR_Paradigm') # exclude first model
-
-for (post_i in 1:length(Models)) {
-   iii = post_i +1
-  if (T_Result[iii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-print(kable(Result, format = "html", escape = F, 
-            caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+print(paste("SNR effect on Alpha for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
+# 
+# 
+# print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Alpha for", Epoch_Win[i], Group_i)) %>%
+#   kable_styling( full_width = F)%>%
+#   column_spec(1,color="black", bold=T)%>%
+#   row_spec(0:nrow(T_Result),color = "black"))
+# 
+# Models = c('Alpha_SNR','Alpha_SNR_Paradigm') # exclude first model
+# 
+# for (post_i in 1:length(Models)) {
+#    iii = post_i +1
+#   if (T_Result[iii,9] < 0.05){
+#     Result = holmsB(summary(get(Models[post_i]))[['tTable']])
+# print(kable(Result, format = "html", escape = F, 
+#             caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
+#   kable_styling( full_width = F)%>%
+#   column_spec(1,color="black", bold=T)%>%
+#   row_spec(0:nrow(Result),color = "black"))
+#   }
+# }
 
  }
 }
@@ -1657,24 +1651,10 @@ WIN_SNR_Theta <- lme(WIN_Score ~ SNR*poly(Theta, degree = 3, raw = TRUE) , rando
 
 T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Theta)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on WIN for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'WIN_SNR_Theta') # exclude first two models
+print(paste("Effect on WIN for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-  print(kable(Result, format = "html", escape = F, 
-            caption = paste("Theta effect on WIN for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+
 
  }
 }
@@ -1708,24 +1688,8 @@ WIN_SNR_Alpha <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , rando
 
 T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Alpha)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on WIN for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'WIN_SNR_Alpha') # exclude first two models
-
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-print(kable(Result, format = "html", escape = F, 
-            caption = paste("Alpha effect on WIN for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+print(paste("Effect on WIN for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
  }
   }
@@ -1757,24 +1721,9 @@ RLE_SNR_Theta <- lme(RLE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|S
 
 T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Theta)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on RLE for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'RLE_SNR_Theta') # exclude first two models
+print(paste("Effect on RLE for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-print(kable(Result, format = "html", escape = F, 
-            caption = paste("Theta effect on RLE for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
 
  }
   }
@@ -1805,24 +1754,8 @@ RLE_SNR_Alpha <- lme(RLE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|S
     
 T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Alpha)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on RLE for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'RLE_SNR_Alpha') # exclude first two models
-
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-  print(kable(Result, format = "html", escape = F, 
-            caption = paste("Alpha effect on RLE for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+print(paste("Effect on RLE for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
  }
   }
@@ -1854,24 +1787,8 @@ ILE_SNR_Theta <- lme(ILE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|S
 
 T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Theta)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on ILE for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'ILE_SNR_Theta') # exclude first two models
-
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-  print(kable(Result, format = "html", escape = F, 
-            caption = paste("SNR effect on ILE for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
  }
   }
@@ -1902,24 +1819,9 @@ ILE_SNR_Alpha <- lme(ILE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|S
     
 T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Alpha)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on ILE for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'ILE_SNR_Alpha') # exclude first two models
+print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-  print(kable(Result, format = "html", escape = F, 
-            caption = paste("SNR effect on ILE for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
 
  }
   }
@@ -1950,24 +1852,10 @@ Alpha_SNR_ILE <- lme(Alpha ~ SNR*ILE, random=~1|Sub,
     
 T_Result=anova(Alpha_Null, Alpha_SNR, Alpha_SNR_ILE)
 
-print(kable(T_Result, format = "html", escape = F, caption = paste("Effect on Alpha for", Epoch_Win[i], Group_i) ) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(T_Result),color = "black"))
-# print(T_Result)
-Models = c( 'Alpha_SNR_ILE') # exclude first two models
+print(paste("Effect on Alpha for", Epoch_Win[i], Group_i))
+GLMM_Tables(T_Result, Table.model = T)
 
-for (post_i in 1:length(Models)) {
-   ii = post_i +2 # Skip to 3rd model, not looking at effect of SNR. 
-  if (T_Result[ii,9] < 0.05){
-    Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-  print(kable(Result, format = "html", escape = F, 
-            caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
-  kable_styling( full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Result),color = "black"))
-  }
-}
+
 
  }
   }
