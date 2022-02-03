@@ -22,6 +22,11 @@ IndvidualFreqBand =0
 SingleAlpha = 0
 LISN_BLC = 0
 
+Location = 'Work'
+if (getwd() == "C:/Users/David Ryan/Desktop/Dave/R_Projects/CDA_1"){
+  Location = 'Home'
+}
+
 Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
 #path = "C:\\Dave\\EEG Listening Effort\\YN\\"
 
@@ -764,14 +769,21 @@ WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
 WIN_Score_Group <- lme((WIN_Score) ~ Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
 
-WIN_Score_Group_SNR <- lme((WIN_Score) ~ Group*SNR, random=~1|Sub,
+WIN_Score_Group_SNR.main <- lme((WIN_Score) ~ Group+SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-WIN_Score_Group_SNR_Run <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
+WIN_Score_Group_SNR.int<- lme((WIN_Score) ~ Group*SNR, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+WIN_Score_Group_SNR_Run.main <- lme((WIN_Score) ~ SNR*Group+Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+WIN_Score_Group_SNR_Run.int <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
 
-T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR,WIN_Score_Group_SNR_Run) 
+T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR.main,WIN_Score_Group_SNR.int,
+               WIN_Score_Group_SNR_Run.main,WIN_Score_Group_SNR_Run.int) 
 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
