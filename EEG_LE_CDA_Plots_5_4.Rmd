@@ -77,25 +77,10 @@ library(emmeans)
 # library(Cairo) # Cleans up plot Alias CairoWIN() use ggsave "cairo-png"
 knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
 
-#library(cowplot)
-#library(apaTables)
-# # Matt's custom functions for SD input for error bar plots
-# lower <- function(y) {
-#     return(mean(y)-(sd(y, na.rm=TRUE) / sqrt(length(y))))
-# }
-# 
-# upper <- function(y) {
-#     return(mean(y)+(sd(y, na.rm=TRUE) / sqrt(length(y))))
-# }
-# # Custom function to modify the coef() function to facilitate table output
-# #  From: https://www.r-bloggers.com/2012/05/lme-summary-data-results-table/
-# coef.lme <- function(mod){
-#     res <- data.frame(
-#         "Beta.CI" = paste(round(summary(mod)$coefficients$fixed, 3), " (",round(summary(mod)$coefficients$fixed-1.96*sqrt(diag(mod$varFix)), 2), ",", round(summary(mod)$coefficients$fixed+1.96*sqrt(diag(mod$varFix)), 2),")", sep=""),
-#         "P.value" = round(2 * pt(-abs(summary(mod)$coefficients$fixed/sqrt(diag(mod$varFix))), summary(mod)$fixDF[[1]]), 3)
-#     )
-#     return(res)
-# }
+# trace(gg_pta, edit=TRUE)
+# untrace(gg_pta)
+
+
 
 holmsB = function(tTable, alpha.level = 0.05){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
   # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
@@ -662,10 +647,11 @@ Audiogram = dplyr::select(PTA_Demo, Sub, Group,L250:R8000) # select audiogram in
 
 ```{r, echo=FALSE}
 
-gg_pta(Audio.Mean)+
+gg_pta(Audio.Mean, ylab = "Hearing Level in Decibels (dB)", xlim = c(125, 8900))+
   aes(x=Freq, y=Threshold, group=Group, fill = group, shape = 21)+
   geom_line(  size=1.3)+
-  geom_errorbar(aes(ymin=Threshold-SD, ymax=Threshold+SD), size=.8,width=0)+
+  geom_errorbar(aes(ymin=Threshold-SD, ymax=Threshold+SD), size=.8,width=.3,
+                position = position_dodge(width = 0.15))+
   geom_point(size=4, aes(fill = Group))+
   scale_shape_identity()+
   scale_fill_manual(values = c("white", "black"))+
@@ -792,7 +778,7 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ### ONH
 
-```{r, echo=FALSE,results='asis'}
+```{r, echo=FALSE,results='asis', eval=FALSE}
 # WIN
 WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML")
@@ -812,7 +798,7 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ### OHL
 
-```{r, echo=FALSE,results='asis'}
+```{r, echo=FALSE,results='asis', eval=FALSE}
 # WIN
 WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML")
@@ -1036,13 +1022,19 @@ ILE_NoCon <- lme((ILE) ~ 1, random=~1|Sub,
 ILE_Group <- lme((ILE) ~ Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
 
-ILE_Group_SNR <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+ILE_Group_SNR.main <- lme((ILE) ~ Group+SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-ILE_Group_SNR_Run <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
+ILE_Group_SNR.int <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR,ILE_Group_SNR_Run) 
+ILE_Group_SNR_Run.main <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+ILE_Group_SNR_Run.int <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR.main,ILE_Group_SNR.int,ILE_Group_SNR_Run.main,ILE_Group_SNR_Run.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
 
@@ -1058,13 +1050,19 @@ RLE_NoCon <- lme((RLE) ~ 1, random=~1|Sub,
 RLE_Group <- lme((RLE) ~ Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
 
-RLE_Group_SNR <- lme((RLE) ~ Group*SNR, random=~1|Sub,
+RLE_Group_SNR.main <- lme((RLE) ~ Group+SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR_Run <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
+RLE_Group_SNR.int <- lme((RLE) ~ Group*SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR,RLE_Group_SNR_Run) 
+RLE_Group_SNR_Run.main <- lme((RLE) ~ Group*SNR+Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+RLE_Group_SNR_Run.int <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int, RLE_Group_SNR_Run.main, RLE_Group_SNR_Run.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
 ```
