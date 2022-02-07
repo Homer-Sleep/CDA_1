@@ -26,13 +26,13 @@ Location = 'Work'
 if (getwd() == "C:/Users/David Ryan/Desktop/Dave/R_Projects/CDA_1"){
   Location = 'Home'
 }
-
+#################################### modify to use local working Dir:
 Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
 #path = "C:\\Dave\\EEG Listening Effort\\YN\\"
-
-ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
-
-OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
+# copies of data are located here:
+# ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
+# 
+# OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
 
 Late_filename = "LateTrialArray_Ep_0.4_1.1.csv"
 
@@ -224,7 +224,7 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
 ```{r, echo=FALSE, warning=FALSE}
 # Import all data:::
 ## load in Self-Reprot and PC data
-
+#################################### modify to use local working Dir:
 PTA_Demo_Raw=as.data.frame(read_excel(paste0(Behav_path, "EEG_LE_CDA_Data.xlsx"), sheet = 'Enter Data Here'))
 PTA_Demo_Raw = dplyr::filter(PTA_Demo_Raw,Group %in% c("OHL","ONH"))
 PTA_Demo_Raw[PTA_Demo_Raw == ""] = NA # empty cells are NA
@@ -1015,7 +1015,7 @@ plot_finish
 ### ILE 
 
 ```{r, echo=FALSE,results='asis'}
-# WIN
+# ILE
 ILE_NoCon <- lme((ILE) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
@@ -1043,26 +1043,27 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 ### RLE 
 
 ```{r, echo=FALSE,results='asis'}
-# WIN
+
+# RLE
 RLE_NoCon <- lme((RLE) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
 RLE_Group <- lme((RLE) ~ Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
 
-RLE_Group_SNR.main <- lme((RLE) ~ Group+SNR, random=~1|Sub,
+RLE_Group_SNR.main <- lme((RLE) ~ Group+SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR.int <- lme((RLE) ~ Group*SNR, random=~1|Sub,
+RLE_Group_SNR.int <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR_Run.main <- lme((RLE) ~ Group*SNR+Run, random=~1|Sub,
+RLE_Group_SNR_Run.main <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Run, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR_Run.int <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
+RLE_Group_SNR_Run.int <- lme((RLE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int, RLE_Group_SNR_Run.main, RLE_Group_SNR_Run.int) 
+T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Run.main,RLE_Group_SNR_Run.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
 ```
