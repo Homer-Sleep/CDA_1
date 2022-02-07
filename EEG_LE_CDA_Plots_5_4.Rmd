@@ -22,14 +22,10 @@ IndvidualFreqBand =0
 SingleAlpha = 0
 LISN_BLC = 0
 
-Location = 'Work'
-if (getwd() == "C:/Users/David Ryan/Desktop/Dave/R_Projects/CDA_1"){
-  Location = 'Home'
-}
-#################################### modify to use local working Dir:
-Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
-#path = "C:\\Dave\\EEG Listening Effort\\YN\\"
 # copies of data are located here:
+# Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
+#path = "C:\\Dave\\EEG Listening Effort\\YN\\"
+
 # ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
 # 
 # OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
@@ -224,8 +220,8 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
 ```{r, echo=FALSE, warning=FALSE}
 # Import all data:::
 ## load in Self-Reprot and PC data
-#################################### modify to use local working Dir:
-PTA_Demo_Raw=as.data.frame(read_excel(paste0(Behav_path, "EEG_LE_CDA_Data.xlsx"), sheet = 'Enter Data Here'))
+
+PTA_Demo_Raw=as.data.frame(read_excel( "EEG_LE_CDA_Data.xlsx", sheet = 'Enter Data Here'))
 PTA_Demo_Raw = dplyr::filter(PTA_Demo_Raw,Group %in% c("OHL","ONH"))
 PTA_Demo_Raw[PTA_Demo_Raw == ""] = NA # empty cells are NA
 PTA_Demo_Raw = Filter(function(x)!all(is.na(x)),PTA_Demo_Raw) # remove columns that are NA
