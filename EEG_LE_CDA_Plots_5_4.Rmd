@@ -308,22 +308,22 @@ summary(PTA_Demo)
 GroupTypes = c("ONH", "OHL")
 for (i in GroupTypes){
  # i=GroupTypes[1]
-path = paste(i, "_EEG_path",sep = "")
+path = paste0( ".\\",i, "\\")
 
 ## Load EEG ONH data
 # EEG_LE_PrePhrase_Raw =read.csv(paste0(eval(as.name(path)), PrePhrase_filename))
 # EEG_LE_PrePhrase_Raw = dplyr::filter(EEG_LE_PrePhrase_Raw, T2 !="NA")
 
-EEG_LE_Phrase_Raw =read.csv(paste0(eval(as.name(path)), Phrase_filename))
+EEG_LE_Phrase_Raw =read.csv(paste0(path, Phrase_filename))
 EEG_LE_Phrase_Raw = dplyr::filter(EEG_LE_Phrase_Raw, T2 !="NA" )
 
-EEG_LE_Word_Raw =read.csv(paste0(eval(as.name(path)), Word_filename))
+EEG_LE_Word_Raw =read.csv(paste0(path, Word_filename))
 EEG_LE_Word_Raw = dplyr::filter(EEG_LE_Word_Raw, T2 !="NA" )
 
-EEG_LE_Late_Raw =read.csv(paste0(eval(as.name(path)), Late_filename))
+EEG_LE_Late_Raw =read.csv(paste0(path, Late_filename))
 EEG_LE_Late_Raw = dplyr::filter(EEG_LE_Late_Raw, T2 !="NA")
 
-EEG_LE_BaseCon_Raw =read.csv(paste0(eval(as.name(path)), BaseCon_filename))
+EEG_LE_BaseCon_Raw =read.csv(paste0(path, BaseCon_filename))
 EEG_LE_BaseCon_Raw = dplyr::filter(EEG_LE_BaseCon_Raw, T2 !="NA" )
 
 # make list of epochs
@@ -462,7 +462,7 @@ for(ii in seq_along(Epoch_List)){
     kable(EpochRM_list[[1]][6:13,], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:8,color = "black")
-  
+  # component data taken from EEG structures in MATLAB
 Components.mean = round(describe(c(5,10,13,9,5,14,1,7,5,11,10,2,7,5,7,8,6,6)), digits = 1)[,c(3,4,8,9)]
  kable(Components.mean, row.names = F, caption = 'Components Removed')%>%
    kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
@@ -1394,13 +1394,20 @@ Theta_NoSNR <- lme((Theta) ~ 1, random=~1|Sub,
 Theta_Group <- lme((Theta) ~ Group, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-Theta_Group_SNR <- lme((Theta) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+Theta_Group_SNR.main <- lme((Theta) ~ SNR+Group + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-Theta_Group_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+Theta_Group_SNR.int <- lme((Theta) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-T_Result=anova(Theta_NoSNR, Theta_Group, Theta_Group_SNR,Theta_Group_SNR_Paradigm)
+Theta_Group_SNR_Paradigm.main <- lme((Theta) ~  Paradigm + SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Theta_Group_SNR_Paradigm.int <- lme((Theta) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Theta_NoSNR, Theta_Group, Theta_Group_SNR.main,Theta_Group_SNR.int,
+               Theta_Group_SNR_Paradigm.main,Theta_Group_SNR_Paradigm.int)
 print(paste("SNR effect on Theta for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
 
@@ -1472,10 +1479,13 @@ Theta_NoSNR <- lme((Theta) ~ 1, random=~1|Sub,
 Theta_SNR <- lme((Theta) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-Theta_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+Theta_SNR_Paradigm.main <- lme((Theta) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm)
+Theta_SNR_Paradigm.int <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm.main, Theta_SNR_Paradigm.int)
 
 print(paste("SNR effect on Theta for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
@@ -1543,6 +1553,8 @@ geom_line(aes(linetype='Theta', size=.8),stat="summary", fun=mean)+
 ## Effects on STD Alpha Power
 
 ```{r, echo=FALSE,results='asis'}
+## Effects on STD Alpha Power, Effect of Group?
+
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 
  for (i in seq_along(Epoch_List)){
@@ -1554,12 +1566,27 @@ Alpha_NoSNR <- lme((Alpha) ~ 1, random=~1|Sub,
 Alpha_Group <- lme((Alpha) ~ Group, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-T_Result=anova(Alpha_NoSNR, Alpha_Group)
+Alpha_Group_SNR.main <- lme((Alpha) ~ SNR+Group + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
+Alpha_Group_SNR.int <- lme((Alpha) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_Group_SNR_Paradigm.main <- lme((Alpha) ~  Paradigm + SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_Group_SNR_Paradigm.int <- lme((Alpha) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Alpha_NoSNR, Alpha_Group, Alpha_Group_SNR.main,Alpha_Group_SNR.int,
+               Alpha_Group_SNR_Paradigm.main,Alpha_Group_SNR_Paradigm.int)
 print(paste("SNR effect on Alpha for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
-}
 
+
+}
+contrasts(Epoch_List[[1]]$Group)
+contrasts(Epoch_List[[1]]$Paradigm)
 
 ```
 
@@ -1577,33 +1604,17 @@ Alpha_NoSNR <- lme((Alpha) ~ 1, random=~1|Sub,
 Alpha_SNR <- lme((Alpha) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-Alpha_SNR_Paradigm <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+Alpha_SNR_Paradigm.main <- lme((Alpha) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm)
+Alpha_SNR_Paradigm.int <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm.main,Alpha_SNR_Paradigm.int)
 
 print(paste("SNR effect on Alpha for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
-# 
-# 
-# print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Alpha for", Epoch_Win[i], Group_i)) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(T_Result),color = "black"))
-# 
-# Models = c('Alpha_SNR','Alpha_SNR_Paradigm') # exclude first model
-# 
-# for (post_i in 1:length(Models)) {
-#    iii = post_i +1
-#   if (T_Result[iii,9] < 0.05){
-#     Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-# print(kable(Result, format = "html", escape = F, 
-#             caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(Result),color = "black"))
-#   }
-# }
+
 
  }
 }
@@ -1635,6 +1646,81 @@ with(Epoch_List[[3]],plot(Theta, Theta_IAF))
 
 ```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# WIN
+WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group <- lme(WIN_Score ~ Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) + Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR_Theta.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Group + Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR_Theta.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Group * Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+
+
+T_Result=anova(WIN_Null, WIN_Group, WIN_Group_SNR.main,WIN_Group_SNR.int,WIN_Group_SNR_Theta.main,WIN_Group_SNR_Theta.int)
+
+print(paste("Effect on WIN for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
+}
+
+```
+
+ No effect of Theta, no need for individual group analysis
+
+
+### Effect of Alpha on WIN
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# WIN
+WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group <- lme(WIN_Score ~ Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) + Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR_Alpha.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Group + Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+WIN_Group_SNR_Alpha.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Group * Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+
+
+T_Result=anova(WIN_Null, WIN_Group, WIN_Group_SNR.main,WIN_Group_SNR.int,WIN_Group_SNR_Alpha.main,WIN_Group_SNR_Alpha.int)
+
+print(paste("Effect on WIN for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
+}
+
+```
+
+### WIN regressed by group for Alpha
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
@@ -1646,17 +1732,18 @@ for (Group_i in Groups){
 WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-WIN_SNR <- lme(WIN_Score ~ SNR, random=~1|Sub,
+WIN_SNR <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-WIN_SNR_Theta <- lme(WIN_Score ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
+WIN_SNR_Alpha.main <- lme(WIN_Score ~ Alpha+poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-# WIN_SNR_Alpha_Theta <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE)* poly(Theta, degree = 3, raw = TRUE), random=~1|Sub,
-#                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+WIN_SNR_Alpha.int <- lme(WIN_Score ~ Alpha*poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
 
-T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Theta)
+
+T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Alpha.main,WIN_SNR_Alpha.int)
 
 print(paste("Effect on WIN for", Epoch_Win[i], Group_i))
 GLMM_Tables(T_Result, Table.model = T)
@@ -1668,50 +1755,50 @@ GLMM_Tables(T_Result, Table.model = T)
 
 ```
 
-### Effect of Alpha on WIN
-
-```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
-Groups = c('ONH', 'OHL')
-
-for (Group_i in Groups){
-
-
- for (i in seq_along(Epoch_List)){
-
-# WIN
-WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-WIN_SNR <- lme(WIN_Score ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-WIN_SNR_Alpha <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-# WIN_SNR_Alpha_Theta <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE)* poly(Theta, degree = 3, raw = TRUE), random=~1|Sub,
-#                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-
-T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Alpha)
-
-print(paste("Effect on WIN for", Epoch_Win[i], Group_i))
-GLMM_Tables(T_Result, Table.model = T)
-
- }
-  }
-
-```
-
 
 ### Effect of Theta on RLE
 
 ```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# RLE
+RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group <- lme(RLE ~ Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) + Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR_Theta.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Group + Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR_Theta.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Group * Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+
+
+T_Result=anova(RLE_Null, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Theta.main,RLE_Group_SNR_Theta.int)
+
+print(paste("Effect on RLE for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
+}
+
+```
+
+### RLE regressed by group for Theta
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
-
 
  for (i in seq_along(Epoch_List)){
 
@@ -1719,21 +1806,24 @@ for (Group_i in Groups){
 RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-RLE_SNR <- lme(RLE ~ SNR, random=~1|Sub,
+RLE_SNR <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-RLE_SNR_Theta <- lme(RLE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
+RLE_SNR_Theta.main <- lme(RLE ~ Theta+poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
+RLE_SNR_Theta.int <- lme(RLE ~ Theta*poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Theta)
+T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Theta.main,RLE_SNR_Theta.int)
 
 print(paste("Effect on RLE for", Epoch_Win[i], Group_i))
 GLMM_Tables(T_Result, Table.model = T)
 
 
+
  }
-  }
+}
 
 ```
 
@@ -1741,10 +1831,47 @@ GLMM_Tables(T_Result, Table.model = T)
 
 ```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# RLE
+RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group <- lme(RLE ~ Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) + Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR_Alpha.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Group + Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+RLE_Group_SNR_Alpha.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Group * Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+
+
+T_Result=anova(RLE_Null, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Alpha.main,RLE_Group_SNR_Alpha.int)
+
+print(paste("Effect on RLE for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
+}
+
+```
+
+
+
+### Group Effect of Alpha on RLE
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
-
 
  for (i in seq_along(Epoch_List)){
 
@@ -1752,20 +1879,24 @@ for (Group_i in Groups){
 RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-RLE_SNR <- lme(RLE ~ SNR, random=~1|Sub,
+RLE_SNR <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-RLE_SNR_Alpha <- lme(RLE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
+RLE_SNR_Alpha.main <- lme(RLE ~ Alpha+poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-    
-T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Alpha)
+RLE_SNR_Alpha.int <- lme(RLE ~ Alpha*poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Alpha.main,RLE_SNR_Alpha.int)
 
 print(paste("Effect on RLE for", Epoch_Win[i], Group_i))
 GLMM_Tables(T_Result, Table.model = T)
 
+
+
  }
-  }
+}
 
 ```
 
@@ -1774,10 +1905,45 @@ GLMM_Tables(T_Result, Table.model = T)
 
 ```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
+ for (i in seq_along(Epoch_List)){
+
+# ILE
+ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+ILE_Group <- lme(ILE ~ Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+ILE_Group_SNR.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) + Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+ILE_Group_SNR.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+ILE_Group_SNR_Theta.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Group + Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+ILE_Group_SNR_Theta.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Group * Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+
+
+T_Result=anova(ILE_Null, ILE_Group, ILE_Group_SNR.main,ILE_Group_SNR.int,ILE_Group_SNR_Theta.main,ILE_Group_SNR_Theta.int)
+
+print(paste("Effect on ILE for", Epoch_Win[i]))
+GLMM_Tables(T_Result, Table.model = T)
+}
+
+```
+
+### ILE regressed by group for Theta
+
+```{r, echo=FALSE,results='asis'}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
-
 
  for (i in seq_along(Epoch_List)){
 
@@ -1785,20 +1951,24 @@ for (Group_i in Groups){
 ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-ILE_SNR <- lme(ILE ~ SNR, random=~1|Sub,
+ILE_SNR <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-ILE_SNR_Theta <- lme(ILE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
+ILE_SNR_Theta.main <- lme(ILE ~ Theta+poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
+ILE_SNR_Theta.int <- lme(ILE ~ Theta*poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Theta)
+T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Theta.main,ILE_SNR_Theta.int)
 
 print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
 GLMM_Tables(T_Result, Table.model = T)
 
+
+
  }
-  }
+}
 
 ```
 
@@ -1806,36 +1976,41 @@ GLMM_Tables(T_Result, Table.model = T)
 
 ```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
-Groups = c('ONH', 'OHL')
-
-for (Group_i in Groups){
-
 
  for (i in seq_along(Epoch_List)){
 
 # ILE
 ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                   data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-ILE_SNR <- lme(ILE ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+ILE_Group <- lme(ILE ~ Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-ILE_SNR_Alpha <- lme(ILE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+ILE_Group_SNR.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) + Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-    
-T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Alpha)
+ILE_Group_SNR.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
+ILE_Group_SNR_Alpha.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Group + Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+ILE_Group_SNR_Alpha.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Group * Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+
+
+T_Result=anova(ILE_Null, ILE_Group, ILE_Group_SNR.main,ILE_Group_SNR.int,ILE_Group_SNR_Alpha.main,ILE_Group_SNR_Alpha.int)
+
+print(paste("Effect on ILE for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
-
-
- }
-  }
+}
 
 ```
 
-### Effect of ILE on Alpha
+
+
+### Group Effect of Alpha on ILE
 
 ```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
@@ -1843,31 +2018,35 @@ Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
 
-
  for (i in seq_along(Epoch_List)){
 
-# Alpha
-Alpha_Null <- lme(Alpha ~ 1, random=~1|Sub,
+# ILE
+ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-Alpha_SNR <- lme(Alpha ~ SNR, random=~1|Sub,
+ILE_SNR <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-Alpha_SNR_ILE <- lme(Alpha ~ SNR*ILE, random=~1|Sub,
+ILE_SNR_Alpha.main <- lme(ILE ~ Alpha+poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-    
-T_Result=anova(Alpha_Null, Alpha_SNR, Alpha_SNR_ILE)
+ILE_SNR_Alpha.int <- lme(ILE ~ Alpha*poly(SNR, degree = 3, raw = TRUE) , random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-print(paste("Effect on Alpha for", Epoch_Win[i], Group_i))
+T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Alpha.main,ILE_SNR_Alpha.int)
+
+print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
 GLMM_Tables(T_Result, Table.model = T)
 
 
 
  }
-  }
+}
 
 ```
+
+
+
 
 # plot Alpha and ILE for OHL:
 
