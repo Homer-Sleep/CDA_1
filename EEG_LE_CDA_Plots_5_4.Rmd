@@ -179,7 +179,7 @@ theme(legend.position="none")+
 # }
 
 
-GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level = 0.05){ 
+GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, Results = F, alpha.level = 0.05){ 
    # table Omnibus results:
   if (Table.Omnibus == T){
     print(kable(T_Result, format = "html", escape = F ) %>%
@@ -211,7 +211,10 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
   row_spec(0:nrow(tTable),color = "black"))
   }else{
       return(tTable)
-    }
+  }
+  if (Results == T){
+    return(tTable)
+  }
 }
 
 ```
@@ -1300,7 +1303,7 @@ print(ggplot()+
 ```
 
 ## IAF frequencies
-```{r echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 # Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
 # Mycolors = c("dodgerblue2", "red2", 'gray')
@@ -1467,6 +1470,7 @@ print( 'White = Random')
 
 ## Effect of Group = Yes, Theta: ONH - OHL:
 ```{r, echo=FALSE,results='asis'}
+Sig.Results = list()
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
 
@@ -1487,27 +1491,8 @@ Theta_SNR_Paradigm.int <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Para
 
 T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm.main, Theta_SNR_Paradigm.int)
 
-print(paste("SNR effect on Theta for", Epoch_Win[i]))
-GLMM_Tables(T_Result, Table.model = T)
-
-# print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Theta for", Epoch_Win[i], Group_i)) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(T_Result),color = "black"))
-# 
-# Models = c('Theta_SNR','Theta_SNR_Paradigm') # exclude first model
-# 
-# for (post_i in 1:length(Models)) {
-#    iii = post_i +1
-#   if (T_Result[iii,9] < 0.05){
-#     Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-# print(kable(Result, format = "html", escape = F, 
-#             caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(Result),color = "black"))
-#   }
-# }
+print(paste("SNR effect on Theta for", Group_i, Epoch_Win[i]))
+Sig.Results[[Group_i]][['Theta']][[Epoch_Win[i]]] = GLMM_Tables(T_Result, Table.model = T, Results = T)
 
  }
 }
@@ -1612,13 +1597,29 @@ Alpha_SNR_Paradigm.int <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Para
 
 T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm.main,Alpha_SNR_Paradigm.int)
 
-print(paste("SNR effect on Alpha for", Epoch_Win[i]))
-GLMM_Tables(T_Result, Table.model = T)
-
+print(paste("SNR effect on Alpha for",  Group_i,Epoch_Win[i]))
+Sig.Results[[Group_i]][['Alpha']][[Epoch_Win[i]]] = GLMM_Tables(T_Result, Table.model = T, Results = T)
 
  }
 }
 
+```
+
+
+```{r, echo=FALSE, results='asis', eval=FALSE}
+########################################################
+  print(kable(tTable, format = "html", escape = F, caption = paste0('<b>',Modelname,'<b>'))%>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(tTable),color = "black"))
+
+Sig.Results
+names(Sig.Results)
+  kable(Sig.Results[['ONH']][['Theta']][['Late']], format = "html", escape = F, caption = paste0('<b>','ONH Theta Late','<b>'))%>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Sig.Results[['ONH']][['Theta']][['Late']]),color = "black")
+  
 ```
 
 
