@@ -1130,7 +1130,7 @@ print(paste("SNR effect on RLE for", Group_i, Epoch_Win[i]))
 ```
 
 ### Required Self-Reported Listening Effort
-```{r, echo=FALSE, results='hide'}
+```{r, echo=FALSE, results='hide', eval=FALSE}
 # attempt at PC and self-report plot
 SelfReport_plot=ggplot()+
   
@@ -1175,9 +1175,64 @@ SelfReport_plot=ggplot()+
 print(SelfReport_plot)
 ```
 
+### Required Self-Reported Listening Effort
+```{r, echo=FALSE, results='hide'}
+# attempt at PC and self-report plot
+SelfReport_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=RLE),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=RLE),
+             shape=21,fill = "white", stat="summary", fun=mean, size = 4)+
+  
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED \nSELF-REPORTED EFFORT")+
+   plot_finish
+   
+print(SelfReport_plot)
+```
 
 ### Invested Self-Reported Listening Effort
 ```{r, echo=FALSE, results='hide'}
+# attempt at PC and self-report plot
+SelfReport_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=ILE),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=ILE),
+             shape=21,fill = "white", stat="summary", fun=mean, size = 4)+
+  
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("INVESTED \nSELF-REPORTED EFFORT")+
+   plot_finish
+   
+print(SelfReport_plot)
+```
+
+### Invested Self-Reported Listening Effort
+```{r, echo=FALSE, results='hide', eval=FALSE}
 # attempt at PC and self-report plot
 SelfReport_plot=ggplot()+
   
