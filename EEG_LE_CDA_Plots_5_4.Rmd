@@ -68,7 +68,7 @@ library(formattable)
 library(lme4)
 library(audiometry) # for audiogram 
 # library(tictoc)
-library(sjPlot)
+# library(sjPlot)
 library(emmeans)
 # library(Cairo) # Cleans up plot Alias CairoWIN() use ggsave "cairo-png"
 knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
@@ -1039,6 +1039,37 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ```
 
+## ILE: Effect of Group = Yes, ONH - OHL:
+```{r, echo=FALSE,results='asis'}
+
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+ for (i in seq_along(Epoch_List)){
+# ILE
+ILE_NoSNR <- lme((ILE) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR <- lme((ILE) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR_Paradigm.main <- lme((ILE) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR_Paradigm.int <- lme((ILE) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(ILE_NoSNR, ILE_SNR,ILE_SNR_Paradigm.main, ILE_SNR_Paradigm.int)
+
+print(paste("SNR effect on ILE for", Group_i, Epoch_Win[i]))
+ GLMM_Tables(T_Result, Table.model = T)
+
+ }
+}
+
+```
+
 ### RLE 
 
 ```{r, echo=FALSE,results='asis'}
@@ -1065,6 +1096,37 @@ RLE_Group_SNR_Run.int <- lme((RLE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I
 T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Run.main,RLE_Group_SNR_Run.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
+```
+
+## RLE: Effect of Group = Yes, ONH - OHL:
+```{r, echo=FALSE,results='asis'}
+
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+ for (i in seq_along(Epoch_List)){
+# RLE
+RLE_NoSNR <- lme((RLE) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR <- lme((RLE) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR_Paradigm.main <- lme((RLE) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR_Paradigm.int <- lme((RLE) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(RLE_NoSNR, RLE_SNR,RLE_SNR_Paradigm.main, RLE_SNR_Paradigm.int)
+
+print(paste("SNR effect on RLE for", Group_i, Epoch_Win[i]))
+ GLMM_Tables(T_Result, Table.model = T)
+
+ }
+}
+
 ```
 
 ### Required Self-Reported Listening Effort
