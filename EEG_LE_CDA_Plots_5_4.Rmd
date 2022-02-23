@@ -700,12 +700,19 @@ PC_df$Age = as.numeric(PC_df$Age)
 PC_df$Veteran. = factor(PC_df$Veteran.)
 PC_df$Gender = factor(PC_df$Gender)
 PC_df$SNR = scale(as.numeric(PC_df$SNR_plot), center = T, scale = F) # SNR is centered and ## not longer with below line ## continuous 
-
-
-
+# create paradigm factor
+ PC_df$Paradigm <- NA
+  PC_df$Paradigm[PC_df$Run %in% c("WIN_1", "WIN_2")] <- 'Descending'
+  PC_df$Paradigm[PC_df$Run %in% c("WIN_R1", "WIN_R2")] <- 'Randomized'
+  PC_df$Paradigm = factor(PC_df$Paradigm, levels = c('Descending','Randomized'))
+  
 # create Percent Correct variable
 PC_df$PerCor = (PC_df$WIN_Score/5)*100
-#PC_df$PerCor = (PC_df$WIN_Score/5)
+
+```
+
+```{r,echo=FALSE}
+
 # PC plot
 ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor, group=Group, shape=21))+
    geom_line(stat="summary", fun=mean,  size=1.3)+
@@ -760,15 +767,15 @@ WIN_Score_Group_SNR.main <- lme((WIN_Score) ~ Group+SNR, random=~1|Sub,
 WIN_Score_Group_SNR.int<- lme((WIN_Score) ~ Group*SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-WIN_Score_Group_SNR_Run.main <- lme((WIN_Score) ~ SNR*Group+Run, random=~1|Sub,
+WIN_Score_Group_SNR_Paradigm.main <- lme((WIN_Score) ~ SNR*Group+Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-WIN_Score_Group_SNR_Run.int <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
+WIN_Score_Group_SNR_Paradigm.int <- lme((WIN_Score) ~ SNR*Group*Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR.main,WIN_Score_Group_SNR.int,
-               WIN_Score_Group_SNR_Run.main,WIN_Score_Group_SNR_Run.int) 
+               WIN_Score_Group_SNR_Paradigm.main,WIN_Score_Group_SNR_Paradigm.int) 
 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
@@ -785,7 +792,7 @@ WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
 WIN_Score_SNR <- lme((WIN_Score) ~ SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML") 
 
-WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
+WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML")
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
@@ -805,7 +812,7 @@ WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
 WIN_Score_SNR <- lme((WIN_Score) ~ SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML") 
 
-WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
+WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML")
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
@@ -887,35 +894,20 @@ geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black", color = this.c
 # ONH plot
 PC_plot=ggplot()+
   
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
              shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
                  geom = "errorbar",fun.data = mean_se, color="black",size=.7,width=.2)+
-  
-    
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
-  
-     
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+
   
         
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN",Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
              shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
   
    
@@ -931,35 +923,20 @@ print(PC_plot)
 # OHL plot
 PC_plot=ggplot()+
   
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
              shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  
-    
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
-  
-     
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+
   
         
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN",Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
              shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
   
    
@@ -1027,13 +1004,13 @@ ILE_Group_SNR.main <- lme((ILE) ~ Group+SNR + I(SNR^2) + I(SNR^3), random=~1|Sub
 ILE_Group_SNR.int <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-ILE_Group_SNR_Run.main <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Run, random=~1|Sub,
+ILE_Group_SNR_Paradigm.main <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-ILE_Group_SNR_Run.int <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
+ILE_Group_SNR_Paradigm.int <- lme((ILE) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR.main,ILE_Group_SNR.int,ILE_Group_SNR_Run.main,ILE_Group_SNR_Run.int) 
+T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR.main,ILE_Group_SNR.int,ILE_Group_SNR_Paradigm.main,ILE_Group_SNR_Paradigm.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
 
@@ -1042,31 +1019,31 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 ## ILE: Effect of Group = Yes, ONH - OHL:
 ```{r, echo=FALSE,results='asis'}
 
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
 Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
- for (i in seq_along(Epoch_List)){
+
 # ILE
 ILE_NoSNR <- lme((ILE) ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                   data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 ILE_SNR <- lme((ILE) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 ILE_SNR_Paradigm.main <- lme((ILE) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 ILE_SNR_Paradigm.int <- lme((ILE) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 T_Result=anova(ILE_NoSNR, ILE_SNR,ILE_SNR_Paradigm.main, ILE_SNR_Paradigm.int)
 
-print(paste("SNR effect on ILE for", Group_i, Epoch_Win[i]))
+print(paste("SNR effect on ILE for", Group_i))
  GLMM_Tables(T_Result, Table.model = T)
 
  }
-}
+
 
 ```
 
@@ -1087,13 +1064,13 @@ RLE_Group_SNR.main <- lme((RLE) ~ Group+SNR + I(SNR^2) + I(SNR^3), random=~1|Sub
 RLE_Group_SNR.int <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR_Run.main <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Run, random=~1|Sub,
+RLE_Group_SNR_Paradigm.main <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR_Run.int <- lme((RLE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
+RLE_Group_SNR_Paradigm.int <- lme((RLE) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Run.main,RLE_Group_SNR_Run.int) 
+T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Paradigm.main,RLE_Group_SNR_Paradigm.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
 ```
@@ -1101,31 +1078,30 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 ## RLE: Effect of Group = Yes, ONH - OHL:
 ```{r, echo=FALSE,results='asis'}
 
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
+
 Groups = c('ONH', 'OHL')
 
 for (Group_i in Groups){
- for (i in seq_along(Epoch_List)){
 # RLE
 RLE_NoSNR <- lme((RLE) ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                   data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 RLE_SNR <- lme((RLE) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 RLE_SNR_Paradigm.main <- lme((RLE) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 RLE_SNR_Paradigm.int <- lme((RLE) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
 
 T_Result=anova(RLE_NoSNR, RLE_SNR,RLE_SNR_Paradigm.main, RLE_SNR_Paradigm.int)
 
-print(paste("SNR effect on RLE for", Group_i, Epoch_Win[i]))
+print(paste("SNR effect on RLE for", Group_i))
  GLMM_Tables(T_Result, Table.model = T)
 
  }
-}
+
 
 ```
 
@@ -1180,18 +1156,18 @@ print(SelfReport_plot)
 # attempt at PC and self-report plot
 SelfReport_plot=ggplot()+
   
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=RLE),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=RLE),
              shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=RLE),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=RLE),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=RLE),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=RLE),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
   
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=RLE),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=RLE),
               stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=RLE),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=RLE),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=RLE),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=RLE),
              shape=21,fill = "white", stat="summary", fun=mean, size = 4)+
   
   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
@@ -1208,18 +1184,18 @@ print(SelfReport_plot)
 # attempt at PC and self-report plot
 SelfReport_plot=ggplot()+
   
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=ILE),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=ILE),
              shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=ILE),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=ILE),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_1', 'WIN_2')), aes(x=SNR_plot, y=ILE),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=ILE),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
   
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=ILE),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=ILE),
               stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=ILE),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=ILE),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Run %in% c('WIN_R1', 'WIN_R2')), aes(x=SNR_plot, y=ILE),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH",Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=ILE),
              shape=21,fill = "white", stat="summary", fun=mean, size = 4)+
   
   scale_y_continuous (limits = c(0,9),breaks = (0:9))+
@@ -1551,22 +1527,6 @@ ThetaParadigm_plot=ggplot()+
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
   
     
-  # geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
-  #             stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  # stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
-  #                 geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  # geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
-  #            shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
-  
-     
-  # geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
-  #             stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  # stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
-  #                 geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  # geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
-  #            shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
-  
-        
   geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
   stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
