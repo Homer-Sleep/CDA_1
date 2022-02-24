@@ -70,6 +70,8 @@ library(audiometry) # for audiogram
 # library(tictoc)
 # library(sjPlot)
 library(emmeans)
+library(jtools) # for interaction
+library(interactions)
 # library(Cairo) # Cleans up plot Alias CairoWIN() use ggsave "cairo-png"
 knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
 
@@ -1870,8 +1872,12 @@ GLMM_Tables(T_Result, Table.model = T)
 }
 ```
 
+## Interaction
+
+```{r, echo=FALSE}
 
 
+```
 
 
 # plot Alpha and ILE for OHL:
