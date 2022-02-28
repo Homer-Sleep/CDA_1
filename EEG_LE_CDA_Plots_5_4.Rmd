@@ -1828,18 +1828,24 @@ GLMM_Tables(T_Result, Table.model = T)
 for jtools: using export_summs and the chunk option results = 'asis' will give nice HTML and PTD tables, to.word = TRUE creates Word document with table
 ```{r, echo=FALSE}
 # jtools approach
-summ(ILE_SNR_Paradigm_Theta_Alpha.int, center = T)
 # Use lm cause lme output does not work:
 ILE_SNR_Paradigm_Theta_Alpha.int <- lm(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta * Alpha, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+                 data=filter(Epoch_List[[3]], Response != "NoRes", Group == 'ONH'), method="ML")
+
+summ(ILE_SNR_Paradigm_Theta_Alpha.int, center = T)
+
 
 # Create data used for model with polynomials
-lm.data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i)
+lm.data=filter(Epoch_List[[3]], Response != "NoRes", Group == 'ONH')# loop by SNR?
 lm.data$SNR2 = lm.data$SNR^2
 lm.data$SNR3 = lm.data$SNR^3
 
-probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = Alpha, modx = Theta, mod2 = SNR, alpha = .05, data = lm.data) # pred = first predictor, modx = x axis (line type), mod2 = panels
-probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = Alpha, modx = Theta, alpha = .05, data = lm.data)
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = Theta, modx = Alpha, mod2 = SNR, alpha = .05) # pred = first predictor, modx = x axis (line type), mod2 = panels
+
+```
+
+```{r}
+
 ```
 
 
