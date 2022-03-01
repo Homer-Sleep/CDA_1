@@ -1825,7 +1825,7 @@ GLMM_Tables(T_Result, Table.model = T)
 ```
 
 ## Interaction
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE}
 # jtools approach
 # for jtools: using export_summs and the chunk option results = 'asis' will give nice HTML and PTD tables, to.word = TRUE creates Word document with table
 
