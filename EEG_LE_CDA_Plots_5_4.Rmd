@@ -428,27 +428,13 @@ for(ii in seq_along(Epoch_List)){
   EpochRM_list[[ii]][13,3]=EpochRM_list[[ii]][13,2]/(nrow(dplyr::filter(Epoch_List[[ii]], Run %in% c("WIN_1", "WIN_2", "WIN_R1", "WIN_R2"))))
   
   
-  # Remove over Threshold
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],FzMaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],PzMaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F3MaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P3MaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F4MaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P4MaxAmp < Threshold)
-  # table of trials per sub post-removal 
-    SubTrials_post=count(Epoch_List[[ii]], Sub)
-    SubTrials_list[[ii]]$Remain = SubTrials_post$n
-    rm(SubTrials_post)
-    
-    print(kable( SubTrials_list[[ii]], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(SubTrials_list[[ii]]),color = "black"))
+
   
     # Order the SNR levels for plot
     Epoch_List[[ii]]$Condition = gsub("dB", "", Epoch_List[[ii]]$Condition) # remove dB    
     Epoch_List[[ii]]$Condition <- factor( Epoch_List[[ii]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
     Epoch_List[[ii]]$SNR = scale(as.numeric( Epoch_List[[ii]]$Condition), center = T, scale = F) # SNR is centered and continuous 
-     
+
   # Order the SNR levels for plot
       Epoch_List[[ii]]$SNR_plot <- factor(Epoch_List[[ii]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
   
@@ -461,12 +447,31 @@ for(ii in seq_along(Epoch_List)){
   Epoch_List[[ii]]$Paradigm[Epoch_List[[ii]]$Run %in% c("WIN_R1", "WIN_R2")] <- 1
   # convert to factor and label the levels
   Epoch_List[[ii]]$Paradigm <- factor(Epoch_List[[ii]]$Paradigm, labels=c("sequential", "randomized"))    
+  # Remove over Threshold
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],FzMaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],PzMaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F3MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P3MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F4MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P4MaxAmp < Threshold)
+  # table of trials per sub post-removal 
+    SubTrials_post=count(Epoch_List[[ii]], Sub)
+    SubTrials_list[[ii]]$Remain = SubTrials_post$n
+    rm(SubTrials_post)
+    
 
+    
 } # for(ii in seq_along(Epoch_List)){
-
+  
+    # table of trials per sub post-removal 
+    print(kable( SubTrials_list[[ii]], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(SubTrials_list[[ii]]),color = "black"))
+    
     kable(EpochRM_list[[1]][6:13,], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:8,color = "black")
+    
   # component data taken from EEG structures in MATLAB
 Components.mean = round(describe(c(5,10,13,9,5,14,1,7,5,11,10,2,7,5,7,8,6,6)), digits = 1)[,c(3,4,8,9)]
  kable(Components.mean, row.names = F, caption = 'Components Removed')%>%
