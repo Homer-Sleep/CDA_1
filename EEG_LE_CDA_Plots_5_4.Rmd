@@ -1410,6 +1410,50 @@ print(ggplot()+
 
 ```
 
+
+## Frequency by effort rating
+```{r, echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+# Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+# Groups = c('ONH', 'OHL')
+
+
+ for (i in seq_along(Freq_plot)){
+
+print(ggplot()+
+        aes(x=ILE, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency)+
+        
+        geom_line(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'OHL'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'OHL'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'OHL'),
+                   aes( size = 3),stat="summary", fun=mean, fill = c('white'), stroke = 1.6)+
+
+        geom_line(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'ONH'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'ONH'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'ONH'),
+                   aes( size = 4),stat="summary", fun=mean, color = 'black')+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c( 'dodgerblue2', 'red2'))+
+    scale_fill_manual(values = c("dodgerblue2","red2", 'white','white'))+
+         
+  
+      labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+     # ylab(bquote(10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .25))+
+ plot_finish)
+
+ }
+
+```
 ## IAF frequencies
 ```{r, echo=FALSE, eval=FALSE}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
@@ -2110,12 +2154,22 @@ write.csv(PC_df, 'PC_df.csv')
 #### Individual Theta Power over WIN Conditions
 
 ```{r, echo=FALSE, eval=FALSE, results='hide', fig.height = 7, fig.width = 9}
-a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)))+
+a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot), Group == 'ONH'), aes(x=SNR_plot, y=(Theta)))+
     geom_point(color = "blue2", stat="summary", fun=mean)+
     geom_line(stat="summary", fun=mean, group=10, size=1.2, color="blue2")+
     stat_summary(  geom = "errorbar",fun.data = mean_se, color="blue3",size=.7, width=.25)+
   facet_wrap(facets = vars(Sub))+
-    labs(title = "Theta Frequency Power of WIN SNR")+
+    labs(title = "ONH - Theta Frequency Power of WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")
+
+a
+
+a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot), Group == 'OHL'), aes(x=SNR_plot, y=(Theta)))+
+    geom_point(color = "blue2", stat="summary", fun=mean)+
+    geom_line(stat="summary", fun=mean, group=10, size=1.2, color="blue2")+
+    stat_summary(  geom = "errorbar",fun.data = mean_se, color="blue3",size=.7, width=.25)+
+  facet_wrap(facets = vars(Sub))+
+    labs(title = "OHL - Theta Frequency Power of WIN SNR")+
    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")
 
 a
