@@ -22,17 +22,13 @@ IndvidualFreqBand =0
 SingleAlpha = 0
 LISN_BLC = 0
 
-Location = 'Work'
-if (getwd() == "C:/Users/David Ryan/Desktop/Dave/R_Projects/CDA_1"){
-  Location = 'Home'
-}
-
-Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
+# copies of data are located here:
+# Behav_path = "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Data\\"
 #path = "C:\\Dave\\EEG Listening Effort\\YN\\"
 
-ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
-
-OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
+# ONH_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\ONH\\"
+# 
+# OHL_EEG_path <- "\\\\v09.med.va.gov\\mou\\Service\\RES\\RESRepository\\_Protocol Data Storage\\AVRes\\0718.15s - Effortful Listening\\Results\\EEG\\OHL\\"
 
 Late_filename = "LateTrialArray_Ep_0.4_1.1.csv"
 
@@ -72,30 +68,17 @@ library(formattable)
 library(lme4)
 library(audiometry) # for audiogram 
 # library(tictoc)
-library(sjPlot)
+# library(sjPlot)
 library(emmeans)
+library(jtools) # for interaction
+library(interactions)
 # library(Cairo) # Cleans up plot Alias CairoWIN() use ggsave "cairo-png"
 knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
 
-#library(cowplot)
-#library(apaTables)
-# # Matt's custom functions for SD input for error bar plots
-# lower <- function(y) {
-#     return(mean(y)-(sd(y, na.rm=TRUE) / sqrt(length(y))))
-# }
-# 
-# upper <- function(y) {
-#     return(mean(y)+(sd(y, na.rm=TRUE) / sqrt(length(y))))
-# }
-# # Custom function to modify the coef() function to facilitate table output
-# #  From: https://www.r-bloggers.com/2012/05/lme-summary-data-results-table/
-# coef.lme <- function(mod){
-#     res <- data.frame(
-#         "Beta.CI" = paste(round(summary(mod)$coefficients$fixed, 3), " (",round(summary(mod)$coefficients$fixed-1.96*sqrt(diag(mod$varFix)), 2), ",", round(summary(mod)$coefficients$fixed+1.96*sqrt(diag(mod$varFix)), 2),")", sep=""),
-#         "P.value" = round(2 * pt(-abs(summary(mod)$coefficients$fixed/sqrt(diag(mod$varFix))), summary(mod)$fixDF[[1]]), 3)
-#     )
-#     return(res)
-# }
+# trace(gg_pta, edit=TRUE)
+# untrace(gg_pta)
+
+
 
 holmsB = function(tTable, alpha.level = 0.05){ # sequential Bonferroni adjustment (a.k.a. Holm-Bonferroni method) 
   # https://stats.stackexchange.com/questions/225937/linear-mixed-effects-model-and-multiplicity-issue-and-adjusting-for-p-values
@@ -198,7 +181,7 @@ theme(legend.position="none")+
 # }
 
 
-GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level = 0.05){ 
+GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, Results = F, alpha.level = 0.05){ 
    # table Omnibus results:
   if (Table.Omnibus == T){
     print(kable(T_Result, format = "html", escape = F ) %>%
@@ -230,7 +213,10 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
   row_spec(0:nrow(tTable),color = "black"))
   }else{
       return(tTable)
-    }
+  }
+  if (Results == T){
+    return(tTable)
+  }
 }
 
 ```
@@ -240,7 +226,7 @@ GLMM_Tables = function(T_Result, Table.Omnibus = T, Table.model = T, alpha.level
 # Import all data:::
 ## load in Self-Reprot and PC data
 
-PTA_Demo_Raw=as.data.frame(read_excel(paste0(Behav_path, "EEG_LE_CDA_Data.xlsx"), sheet = 'Enter Data Here'))
+PTA_Demo_Raw=as.data.frame(read_excel( "EEG_LE_CDA_Data.xlsx", sheet = 'Enter Data Here'))
 PTA_Demo_Raw = dplyr::filter(PTA_Demo_Raw,Group %in% c("OHL","ONH"))
 PTA_Demo_Raw[PTA_Demo_Raw == ""] = NA # empty cells are NA
 PTA_Demo_Raw = Filter(function(x)!all(is.na(x)),PTA_Demo_Raw) # remove columns that are NA
@@ -327,22 +313,22 @@ summary(PTA_Demo)
 GroupTypes = c("ONH", "OHL")
 for (i in GroupTypes){
  # i=GroupTypes[1]
-path = paste(i, "_EEG_path",sep = "")
+path = paste0( ".\\",i, "\\")
 
 ## Load EEG ONH data
 # EEG_LE_PrePhrase_Raw =read.csv(paste0(eval(as.name(path)), PrePhrase_filename))
 # EEG_LE_PrePhrase_Raw = dplyr::filter(EEG_LE_PrePhrase_Raw, T2 !="NA")
 
-EEG_LE_Phrase_Raw =read.csv(paste0(eval(as.name(path)), Phrase_filename))
+EEG_LE_Phrase_Raw =read.csv(paste0(path, Phrase_filename))
 EEG_LE_Phrase_Raw = dplyr::filter(EEG_LE_Phrase_Raw, T2 !="NA" )
 
-EEG_LE_Word_Raw =read.csv(paste0(eval(as.name(path)), Word_filename))
+EEG_LE_Word_Raw =read.csv(paste0(path, Word_filename))
 EEG_LE_Word_Raw = dplyr::filter(EEG_LE_Word_Raw, T2 !="NA" )
 
-EEG_LE_Late_Raw =read.csv(paste0(eval(as.name(path)), Late_filename))
+EEG_LE_Late_Raw =read.csv(paste0(path, Late_filename))
 EEG_LE_Late_Raw = dplyr::filter(EEG_LE_Late_Raw, T2 !="NA")
 
-EEG_LE_BaseCon_Raw =read.csv(paste0(eval(as.name(path)), BaseCon_filename))
+EEG_LE_BaseCon_Raw =read.csv(paste0(path, BaseCon_filename))
 EEG_LE_BaseCon_Raw = dplyr::filter(EEG_LE_BaseCon_Raw, T2 !="NA" )
 
 # make list of epochs
@@ -442,27 +428,13 @@ for(ii in seq_along(Epoch_List)){
   EpochRM_list[[ii]][13,3]=EpochRM_list[[ii]][13,2]/(nrow(dplyr::filter(Epoch_List[[ii]], Run %in% c("WIN_1", "WIN_2", "WIN_R1", "WIN_R2"))))
   
   
-  # Remove over Threshold
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],FzMaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],PzMaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F3MaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P3MaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F4MaxAmp < Threshold)
-  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P4MaxAmp < Threshold)
-  # table of trials per sub post-removal 
-    SubTrials_post=count(Epoch_List[[ii]], Sub)
-    SubTrials_list[[ii]]$Remain = SubTrials_post$n
-    rm(SubTrials_post)
-    
-    print(kable( SubTrials_list[[ii]], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(SubTrials_list[[ii]]),color = "black"))
+
   
     # Order the SNR levels for plot
     Epoch_List[[ii]]$Condition = gsub("dB", "", Epoch_List[[ii]]$Condition) # remove dB    
     Epoch_List[[ii]]$Condition <- factor( Epoch_List[[ii]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
     Epoch_List[[ii]]$SNR = scale(as.numeric( Epoch_List[[ii]]$Condition), center = T, scale = F) # SNR is centered and continuous 
-     
+
   # Order the SNR levels for plot
       Epoch_List[[ii]]$SNR_plot <- factor(Epoch_List[[ii]]$Condition, levels=c("24","20","16","12", "8", "4","0")) 
   
@@ -475,13 +447,32 @@ for(ii in seq_along(Epoch_List)){
   Epoch_List[[ii]]$Paradigm[Epoch_List[[ii]]$Run %in% c("WIN_R1", "WIN_R2")] <- 1
   # convert to factor and label the levels
   Epoch_List[[ii]]$Paradigm <- factor(Epoch_List[[ii]]$Paradigm, labels=c("sequential", "randomized"))    
+  # Remove over Threshold
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],FzMaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],PzMaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F3MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P3MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],F4MaxAmp < Threshold)
+  Epoch_List[[ii]]=dplyr::filter(Epoch_List[[ii]],P4MaxAmp < Threshold)
+  # table of trials per sub post-removal 
+    SubTrials_post=count(Epoch_List[[ii]], Sub)
+    SubTrials_list[[ii]]$Remain = SubTrials_post$n
+    rm(SubTrials_post)
+    
 
+    
 } # for(ii in seq_along(Epoch_List)){
-
+  
+    # table of trials per sub post-removal 
+    print(kable( SubTrials_list[[ii]], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(SubTrials_list[[ii]]),color = "black"))
+    
     kable(EpochRM_list[[1]][6:13,], row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:8,color = "black")
-  
+    
+  # component data taken from EEG structures in MATLAB
 Components.mean = round(describe(c(5,10,13,9,5,14,1,7,5,11,10,2,7,5,7,8,6,6)), digits = 1)[,c(3,4,8,9)]
  kable(Components.mean, row.names = F, caption = 'Components Removed')%>%
    kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
@@ -662,10 +653,11 @@ Audiogram = dplyr::select(PTA_Demo, Sub, Group,L250:R8000) # select audiogram in
 
 ```{r, echo=FALSE}
 
-gg_pta(Audio.Mean)+
+gg_pta(Audio.Mean, ylab = "Hearing Level in Decibels (dB)", xlim = c(125, 8900))+
   aes(x=Freq, y=Threshold, group=Group, fill = group, shape = 21)+
   geom_line(  size=1.3)+
-  geom_errorbar(aes(ymin=Threshold-SD, ymax=Threshold+SD), size=.8,width=0)+
+  geom_errorbar(aes(ymin=Threshold-SD, ymax=Threshold+SD), size=.8,width=.3,
+                position = position_dodge(width = 0.15))+
   geom_point(size=4, aes(fill = Group))+
   scale_shape_identity()+
   scale_fill_manual(values = c("white", "black"))+
@@ -715,12 +707,19 @@ PC_df$Age = as.numeric(PC_df$Age)
 PC_df$Veteran. = factor(PC_df$Veteran.)
 PC_df$Gender = factor(PC_df$Gender)
 PC_df$SNR = scale(as.numeric(PC_df$SNR_plot), center = T, scale = F) # SNR is centered and ## not longer with below line ## continuous 
-
-
-
+# create paradigm factor
+ PC_df$Paradigm <- NA
+  PC_df$Paradigm[PC_df$Run %in% c("WIN_1", "WIN_2")] <- 'Descending'
+  PC_df$Paradigm[PC_df$Run %in% c("WIN_R1", "WIN_R2")] <- 'Randomized'
+  PC_df$Paradigm = factor(PC_df$Paradigm, levels = c('Descending','Randomized'))
+  
 # create Percent Correct variable
 PC_df$PerCor = (PC_df$WIN_Score/5)*100
-#PC_df$PerCor = (PC_df$WIN_Score/5)
+
+```
+
+```{r,echo=FALSE}
+
 # PC plot
 ggplot(dplyr::filter(PC_df, Condition != "LISN"), aes(x=SNR_plot, y=PerCor, group=Group, shape=21))+
    geom_line(stat="summary", fun=mean,  size=1.3)+
@@ -775,15 +774,15 @@ WIN_Score_Group_SNR.main <- lme((WIN_Score) ~ Group+SNR, random=~1|Sub,
 WIN_Score_Group_SNR.int<- lme((WIN_Score) ~ Group*SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-WIN_Score_Group_SNR_Run.main <- lme((WIN_Score) ~ SNR*Group+Run, random=~1|Sub,
+WIN_Score_Group_SNR_Paradigm.main <- lme((WIN_Score) ~ SNR*Group+Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-WIN_Score_Group_SNR_Run.int <- lme((WIN_Score) ~ SNR*Group*Run, random=~1|Sub,
+WIN_Score_Group_SNR_Paradigm.int <- lme((WIN_Score) ~ SNR*Group*Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_Group, WIN_Score_Group_SNR.main,WIN_Score_Group_SNR.int,
-               WIN_Score_Group_SNR_Run.main,WIN_Score_Group_SNR_Run.int) 
+               WIN_Score_Group_SNR_Paradigm.main,WIN_Score_Group_SNR_Paradigm.int) 
 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
@@ -792,7 +791,7 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ### ONH
 
-```{r, echo=FALSE,results='asis'}
+```{r, echo=FALSE,results='asis', eval=FALSE}
 # WIN
 WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML")
@@ -800,7 +799,7 @@ WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
 WIN_Score_SNR <- lme((WIN_Score) ~ SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML") 
 
-WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
+WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "ONH"), method="ML")
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
@@ -812,7 +811,7 @@ GLMM_Tables(T_Result, Table.Omnibus = T)
 
 ### OHL
 
-```{r, echo=FALSE,results='asis'}
+```{r, echo=FALSE,results='asis', eval=FALSE}
 # WIN
 WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML")
@@ -820,7 +819,7 @@ WIN_Score_NoCon <- lme((WIN_Score) ~ 1, random=~1|Sub,
 WIN_Score_SNR <- lme((WIN_Score) ~ SNR, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML") 
 
-WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Run, random=~1|Sub,
+WIN_Score_SNR_Paradigm <- lme((WIN_Score) ~ SNR*Paradigm, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P"), Group == "OHL"), method="ML")
 
 T_Result=anova(WIN_Score_NoCon, WIN_Score_SNR, WIN_Score_SNR_Paradigm) 
@@ -902,35 +901,20 @@ geom_point(data=d, mapping=aes(x=a, y=0.5, shape=a, fill="black", color = this.c
 # ONH plot
 PC_plot=ggplot()+
   
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
              shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
                  geom = "errorbar",fun.data = mean_se, color="black",size=.7,width=.2)+
-  
-    
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
-  
-     
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+
   
         
-  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "ONH", Condition != "LISN",Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
              shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
   
    
@@ -946,35 +930,20 @@ print(PC_plot)
 # OHL plot
 PC_plot=ggplot()+
   
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
              shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_1'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=PerCor),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  
-    
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=PerCor),
-             shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
-  
-     
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=PerCor),
-             shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
+
   
         
-  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_line (data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  stat_summary(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN",Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Run == 'WIN_R2'), aes(x=SNR_plot, y=PerCor),
+  geom_point(data=dplyr::filter(PC_df, Group == "OHL", Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=PerCor),
              shape=24,fill = "white",stat="summary", fun=mean, size = 4)+
   
    
@@ -1029,48 +998,122 @@ plot_finish
 ### ILE 
 
 ```{r, echo=FALSE,results='asis'}
-# WIN
+# ILE
 ILE_NoCon <- lme((ILE) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
 ILE_Group <- lme((ILE) ~ Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
 
-ILE_Group_SNR <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+ILE_Group_SNR.main <- lme((ILE) ~ Group+SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-ILE_Group_SNR_Run <- lme((ILE) ~  Run*SNR*Group + Run*I(SNR^2)*Group + Run*I(SNR^3)*Group, random=~1|Sub,
+ILE_Group_SNR.int <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR,ILE_Group_SNR_Run) 
+ILE_Group_SNR_Paradigm.main <- lme((ILE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Paradigm, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+ILE_Group_SNR_Paradigm.int <- lme((ILE) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+T_Result=anova(ILE_NoCon, ILE_Group, ILE_Group_SNR.main,ILE_Group_SNR.int,ILE_Group_SNR_Paradigm.main,ILE_Group_SNR_Paradigm.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
+
+```
+
+## ILE: Effect of Group = Yes, ONH - OHL:
+```{r, echo=FALSE,results='asis'}
+
+
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+
+# ILE
+ILE_NoSNR <- lme((ILE) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR <- lme((ILE) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR_Paradigm.main <- lme((ILE) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+ILE_SNR_Paradigm.int <- lme((ILE) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(ILE_NoSNR, ILE_SNR,ILE_SNR_Paradigm.main, ILE_SNR_Paradigm.int)
+
+print(paste("SNR effect on ILE for", Group_i))
+ GLMM_Tables(T_Result, Table.model = T)
+
+ }
+
 
 ```
 
 ### RLE 
 
 ```{r, echo=FALSE,results='asis'}
-# WIN
+
+# RLE
 RLE_NoCon <- lme((RLE) ~ 1, random=~1|Sub,
                    data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
 RLE_Group <- lme((RLE) ~ Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML") 
 
-RLE_Group_SNR <- lme((RLE) ~ Group*SNR, random=~1|Sub,
+RLE_Group_SNR.main <- lme((RLE) ~ Group+SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-RLE_Group_SNR_Run <- lme((RLE) ~ SNR*Group*Run, random=~1|Sub,
+RLE_Group_SNR.int <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
 
-T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR,RLE_Group_SNR_Run) 
+RLE_Group_SNR_Paradigm.main <- lme((RLE) ~ Group*SNR + I(SNR^2)*Group + I(SNR^3)*Group + Paradigm, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+RLE_Group_SNR_Paradigm.int <- lme((RLE) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=dplyr::filter(PC_df, !Run %in% c("Baseline", "WIN_P")), method="ML")
+
+T_Result=anova(RLE_NoCon, RLE_Group, RLE_Group_SNR.main,RLE_Group_SNR.int,RLE_Group_SNR_Paradigm.main,RLE_Group_SNR_Paradigm.int) 
 
 GLMM_Tables(T_Result, Table.Omnibus = T)
 ```
 
+## RLE: Effect of Group = Yes, ONH - OHL:
+```{r, echo=FALSE,results='asis'}
+
+
+Groups = c('ONH', 'OHL')
+
+for (Group_i in Groups){
+# RLE
+RLE_NoSNR <- lme((RLE) ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR <- lme((RLE) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR_Paradigm.main <- lme((RLE) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+RLE_SNR_Paradigm.int <- lme((RLE) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[1]], Response != "NoRes", Group == Group_i), method="ML")
+
+T_Result=anova(RLE_NoSNR, RLE_SNR,RLE_SNR_Paradigm.main, RLE_SNR_Paradigm.int)
+
+print(paste("SNR effect on RLE for", Group_i))
+ GLMM_Tables(T_Result, Table.model = T)
+
+ }
+
+
+```
+
 ### Required Self-Reported Listening Effort
-```{r, echo=FALSE, results='hide'}
+```{r, echo=FALSE, results='hide', eval=FALSE}
 # attempt at PC and self-report plot
 SelfReport_plot=ggplot()+
   
@@ -1115,9 +1158,72 @@ SelfReport_plot=ggplot()+
 print(SelfReport_plot)
 ```
 
+### Required Self-Reported Listening Effort - by group, Descending- Black, Random - White
+```{r, echo=FALSE, results='hide'}
+Groups = c('ONH', 'OHL')
+for (group_i in Groups) {
+  
+SelfReport_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=RLE),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+  geom_line (data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=RLE),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=RLE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=RLE),
+             shape=21,fill = "white", stat="summary", fun=mean, size = 4)+
+  
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("REQUIRED \nSELF-REPORTED EFFORT")+
+  labs(title = paste(group_i,'Descending- Black, Random - White'))+
+   plot_finish
+   
+print(SelfReport_plot)
+}
+```
+
+### Invested Self-Reported Listening Effort- ONH, Descending- Black, Random - White
+```{r, echo=FALSE, results='hide'}
+Groups = c('ONH', 'OHL')
+for (group_i in Groups) {
+  
+SelfReport_plot=ggplot()+
+  
+  geom_point(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=ILE),
+             shape=21, fill = "black",stat="summary", fun=mean, size = 4)+
+  geom_line (data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Descending'), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
+  
+  geom_line (data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=ILE),
+              stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
+  stat_summary(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=ILE),
+                  geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
+  geom_point(data=dplyr::filter(PC_df, Group == group_i,Condition != "LISN", Paradigm == 'Randomized'), aes(x=SNR_plot, y=ILE),
+             shape=21,fill = "white", stat="summary", fun=mean, size = 4)+
+  
+  scale_y_continuous (limits = c(0,9),breaks = (0:9))+
+
+ # labs(title = "Self-Reported Listening Effort Over WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("INVESTED \nSELF-REPORTED EFFORT")+
+  labs(title = paste(group_i, 'Descending- Black, Random - White'))+
+   plot_finish
+   
+print(SelfReport_plot)
+}
+```
 
 ### Invested Self-Reported Listening Effort
-```{r, echo=FALSE, results='hide'}
+```{r, echo=FALSE, results='hide', eval=FALSE}
 # attempt at PC and self-report plot
 SelfReport_plot=ggplot()+
   
@@ -1261,7 +1367,7 @@ print(ggplot(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == ii),
 ```
 
 
-```{r echo=FALSE}
+```{r, echo=FALSE}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 # Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
 # Mycolors = c("dodgerblue2", "red2", 'gray')
@@ -1304,8 +1410,52 @@ print(ggplot()+
 
 ```
 
+
+## Frequency by effort rating
+```{r, echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+# Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+# Groups = c('ONH', 'OHL')
+
+
+ for (i in seq_along(Freq_plot)){
+
+print(ggplot()+
+        aes(x=ILE, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency)+
+        
+        geom_line(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'OHL'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'OHL'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'OHL'),
+                   aes( size = 3),stat="summary", fun=mean, fill = c('white'), stroke = 1.6)+
+
+        geom_line(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'ONH'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'ONH'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(ILE), Group == 'ONH'),
+                   aes( size = 4),stat="summary", fun=mean, color = 'black')+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c( 'dodgerblue2', 'red2'))+
+    scale_fill_manual(values = c("dodgerblue2","red2", 'white','white'))+
+         
+  
+      labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+     # ylab(bquote(10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .25))+
+ plot_finish)
+
+ }
+
+```
 ## IAF frequencies
-```{r echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 # Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
 # Mycolors = c("dodgerblue2", "red2", 'gray')
@@ -1399,13 +1549,20 @@ Theta_NoSNR <- lme((Theta) ~ 1, random=~1|Sub,
 Theta_Group <- lme((Theta) ~ Group, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-Theta_Group_SNR <- lme((Theta) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+Theta_Group_SNR.main <- lme((Theta) ~ SNR+Group + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-Theta_Group_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+Theta_Group_SNR.int <- lme((Theta) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-T_Result=anova(Theta_NoSNR, Theta_Group, Theta_Group_SNR,Theta_Group_SNR_Paradigm)
+Theta_Group_SNR_Paradigm.main <- lme((Theta) ~  Paradigm + SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Theta_Group_SNR_Paradigm.int <- lme((Theta) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Theta_NoSNR, Theta_Group, Theta_Group_SNR.main,Theta_Group_SNR.int,
+               Theta_Group_SNR_Paradigm.main,Theta_Group_SNR_Paradigm.int)
 print(paste("SNR effect on Theta for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
 
@@ -1429,22 +1586,6 @@ ThetaParadigm_plot=ggplot()+
                   geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
   
     
-  # geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
-  #             stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
-  # stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
-  #                 geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+
-  # geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_2'), aes(x=SNR_plot, y=Theta),
-  #            shape=21,fill = "white",stat="summary", fun=mean, size = 4)+
-  
-     
-  # geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
-  #             stat="summary", fun=mean, group=10, linetype='solid',  size=1.3)+
-  # stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
-  #                 geom = "errorbar",fun.data = mean_se, size=.7,width=.2)+ 
-  # geom_point(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Run == 'WIN_R1'), aes(x=SNR_plot, y=Theta),
-  #            shape=24,fill = "black", stat="summary", fun=mean, size = 4)+
-  
-        
   geom_line (data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
               stat="summary", fun=mean, group=10, linetype='solid', size=1.3)+
   stat_summary(data=dplyr::filter(Epoch_List[[1]], Condition != "LISN", Paradigm == 'randomized'), aes(x=SNR_plot, y=Theta),
@@ -1465,6 +1606,7 @@ print( 'White = Random')
 
 ## Effect of Group = Yes, Theta: ONH - OHL:
 ```{r, echo=FALSE,results='asis'}
+Sig.Results = list()
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
 
@@ -1477,32 +1619,16 @@ Theta_NoSNR <- lme((Theta) ~ 1, random=~1|Sub,
 Theta_SNR <- lme((Theta) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-Theta_SNR_Paradigm <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+Theta_SNR_Paradigm.main <- lme((Theta) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm)
+Theta_SNR_Paradigm.int <- lme((Theta) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-print(paste("SNR effect on Theta for", Epoch_Win[i]))
-GLMM_Tables(T_Result, Table.model = T)
+T_Result=anova(Theta_NoSNR, Theta_SNR,Theta_SNR_Paradigm.main, Theta_SNR_Paradigm.int)
 
-# print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Theta for", Epoch_Win[i], Group_i)) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(T_Result),color = "black"))
-# 
-# Models = c('Theta_SNR','Theta_SNR_Paradigm') # exclude first model
-# 
-# for (post_i in 1:length(Models)) {
-#    iii = post_i +1
-#   if (T_Result[iii,9] < 0.05){
-#     Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-# print(kable(Result, format = "html", escape = F, 
-#             caption = paste("SNR effect on Theta for", Epoch_Win[i])) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(Result),color = "black"))
-#   }
-# }
+print(paste("SNR effect on Theta for", Group_i, Epoch_Win[i]))
+Sig.Results[[Group_i]][['Theta']][[Epoch_Win[i]]] = GLMM_Tables(T_Result, Table.model = T, Results = T)
 
  }
 }
@@ -1548,6 +1674,8 @@ geom_line(aes(linetype='Theta', size=.8),stat="summary", fun=mean)+
 ## Effects on STD Alpha Power
 
 ```{r, echo=FALSE,results='asis'}
+## Effects on STD Alpha Power, Effect of Group?
+
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
 
  for (i in seq_along(Epoch_List)){
@@ -1559,12 +1687,27 @@ Alpha_NoSNR <- lme((Alpha) ~ 1, random=~1|Sub,
 Alpha_Group <- lme((Alpha) ~ Group, random=~1|Sub,
                    data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
-T_Result=anova(Alpha_NoSNR, Alpha_Group)
+Alpha_Group_SNR.main <- lme((Alpha) ~ SNR+Group + I(SNR^2) + I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
 
+Alpha_Group_SNR.int <- lme((Alpha) ~ SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_Group_SNR_Paradigm.main <- lme((Alpha) ~  Paradigm + SNR*Group + I(SNR^2)*Group + I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+Alpha_Group_SNR_Paradigm.int <- lme((Alpha) ~  Paradigm*SNR*Group + Paradigm*I(SNR^2)*Group + Paradigm*I(SNR^3)*Group, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes"), method="ML")
+
+T_Result=anova(Alpha_NoSNR, Alpha_Group, Alpha_Group_SNR.main,Alpha_Group_SNR.int,
+               Alpha_Group_SNR_Paradigm.main,Alpha_Group_SNR_Paradigm.int)
 print(paste("SNR effect on Alpha for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
-}
 
+
+}
+contrasts(Epoch_List[[1]]$Group)
+contrasts(Epoch_List[[1]]$Paradigm)
 
 ```
 
@@ -1582,37 +1725,37 @@ Alpha_NoSNR <- lme((Alpha) ~ 1, random=~1|Sub,
 Alpha_SNR <- lme((Alpha) ~ SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-Alpha_SNR_Paradigm <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+Alpha_SNR_Paradigm.main <- lme((Alpha) ~  Paradigm + SNR + I(SNR^2) + I(SNR^3), random=~1|Sub,
                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm)
+Alpha_SNR_Paradigm.int <- lme((Alpha) ~  Paradigm*SNR + Paradigm*I(SNR^2) + Paradigm*I(SNR^3), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
 
-print(paste("SNR effect on Alpha for", Epoch_Win[i]))
-GLMM_Tables(T_Result, Table.model = T)
-# 
-# 
-# print(kable(T_Result, format = "html", escape = F, caption = paste("SNR effect on Alpha for", Epoch_Win[i], Group_i)) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(T_Result),color = "black"))
-# 
-# Models = c('Alpha_SNR','Alpha_SNR_Paradigm') # exclude first model
-# 
-# for (post_i in 1:length(Models)) {
-#    iii = post_i +1
-#   if (T_Result[iii,9] < 0.05){
-#     Result = holmsB(summary(get(Models[post_i]))[['tTable']])
-# print(kable(Result, format = "html", escape = F, 
-#             caption = paste("SNR effect on Alpha for", Epoch_Win[i])) %>%
-#   kable_styling( full_width = F)%>%
-#   column_spec(1,color="black", bold=T)%>%
-#   row_spec(0:nrow(Result),color = "black"))
-#   }
-# }
+T_Result=anova(Alpha_NoSNR, Alpha_SNR,Alpha_SNR_Paradigm.main,Alpha_SNR_Paradigm.int)
+
+print(paste("SNR effect on Alpha for",  Group_i,Epoch_Win[i]))
+Sig.Results[[Group_i]][['Alpha']][[Epoch_Win[i]]] = GLMM_Tables(T_Result, Table.model = T, Results = T)
 
  }
 }
 
+```
+
+
+```{r, echo=FALSE, results='asis', eval=FALSE}
+########################################################
+  print(kable(tTable, format = "html", escape = F, caption = paste0('<b>',Modelname,'<b>'))%>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(tTable),color = "black"))
+
+Sig.Results
+names(Sig.Results)
+  kable(Sig.Results[['ONH']][['Theta']][['Late']], format = "html", escape = F, caption = paste0('<b>','ONH Theta Late','<b>'))%>%
+  kable_styling( full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Sig.Results[['ONH']][['Theta']][['Late']]),color = "black")
+  
 ```
 
 
@@ -1636,243 +1779,183 @@ with(Epoch_List[[3]],plot(Theta, Theta_IAF))
 ## EEG-YN Alpha, Theta, and SNR were regressed on WIN, ILE, and RLE:
 
 
-### Effect of Theta on WIN
+### Effect of Theta & Alpha on WIN
 
 ```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
 
-for (Group_i in Groups){
-
+for (group_i in Groups) {
+  
 
  for (i in seq_along(Epoch_List)){
 
 # WIN
 WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-WIN_SNR <- lme(WIN_Score ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+WIN_SNR.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-WIN_SNR_Theta <- lme(WIN_Score ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+WIN_SNR_Paradigm.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) + Paradigm, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-# WIN_SNR_Alpha_Theta <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE)* poly(Theta, degree = 3, raw = TRUE), random=~1|Sub,
-#                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+WIN_SNR_Paradigm.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+WIN_SNR_Paradigm_Theta.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm + Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+WIN_SNR_Paradigm_Theta.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+WIN_SNR_Paradigm_Theta_Alpha.main <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta + Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+WIN_SNR_Paradigm_Theta_Alpha.int <- lme(WIN_Score ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta * Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
 
-T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Theta)
 
-print(paste("Effect on WIN for", Epoch_Win[i], Group_i))
+T_Result=anova(WIN_Null, WIN_SNR.main, WIN_SNR_Paradigm.main, WIN_SNR_Paradigm.int,WIN_SNR_Paradigm_Theta.main,
+               WIN_SNR_Paradigm_Theta.int,WIN_SNR_Paradigm_Theta_Alpha.main, WIN_SNR_Paradigm_Theta_Alpha.int)
+
+print(paste( group_i,"Effect on WIN for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
-
-
-
- }
 }
-
+}
 ```
 
-### Effect of Alpha on WIN
+### Effect of Alpha & Theta on ILE by Group
 
 ```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
-
-for (Group_i in Groups){
-
-
- for (i in seq_along(Epoch_List)){
-
-# WIN
-WIN_Null <- lme(WIN_Score ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-WIN_SNR <- lme(WIN_Score ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-WIN_SNR_Alpha <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-# WIN_SNR_Alpha_Theta <- lme(WIN_Score ~ SNR*poly(Alpha, degree = 3, raw = TRUE)* poly(Theta, degree = 3, raw = TRUE), random=~1|Sub,
-#                  data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-
-T_Result=anova(WIN_Null, WIN_SNR, WIN_SNR_Alpha)
-
-print(paste("Effect on WIN for", Epoch_Win[i], Group_i))
-GLMM_Tables(T_Result, Table.model = T)
-
- }
-  }
-
-```
-
-
-### Effect of Theta on RLE
-
-```{r, echo=FALSE,results='asis'}
 Epoch_Win = c('Phrase' ,'Word' ,'Late')
-Groups = c('ONH', 'OHL')
 
-for (Group_i in Groups){
-
-
- for (i in seq_along(Epoch_List)){
-
-# RLE
-RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-RLE_SNR <- lme(RLE ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-RLE_SNR_Theta <- lme(RLE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-
-T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Theta)
-
-print(paste("Effect on RLE for", Epoch_Win[i], Group_i))
-GLMM_Tables(T_Result, Table.model = T)
-
-
- }
-  }
-
-```
-
-### Effect of Alpha on RLE
-
-```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
-Groups = c('ONH', 'OHL')
-
-for (Group_i in Groups){
-
-
- for (i in seq_along(Epoch_List)){
-
-# RLE
-RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-RLE_SNR <- lme(RLE ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-RLE_SNR_Alpha <- lme(RLE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-    
-T_Result=anova(RLE_Null, RLE_SNR, RLE_SNR_Alpha)
-
-print(paste("Effect on RLE for", Epoch_Win[i], Group_i))
-GLMM_Tables(T_Result, Table.model = T)
-
- }
-  }
-
-```
-
-
-### Effect of Theta on ILE
-
-```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
-Groups = c('ONH', 'OHL')
-
-for (Group_i in Groups){
-
+for (group_i in Groups) {
+  
 
  for (i in seq_along(Epoch_List)){
 
 # ILE
 ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-ILE_SNR <- lme(ILE ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+ILE_SNR.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-ILE_SNR_Theta <- lme(ILE ~ SNR*poly(Theta, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+ILE_SNR_Paradigm.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) + Paradigm, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+ILE_SNR_Paradigm.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+ILE_SNR_Paradigm_Theta.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm + Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+ILE_SNR_Paradigm_Theta.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+ILE_SNR_Paradigm_Theta_Alpha.main <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta + Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+ILE_SNR_Paradigm_Theta_Alpha.int <- lme(ILE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta * Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
 
-T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Theta)
 
-print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
+T_Result=anova(ILE_Null, ILE_SNR.main, ILE_SNR_Paradigm.main, ILE_SNR_Paradigm.int,ILE_SNR_Paradigm_Theta.main,
+               ILE_SNR_Paradigm_Theta.int,ILE_SNR_Paradigm_Theta_Alpha.main, ILE_SNR_Paradigm_Theta_Alpha.int)
+
+print(paste( group_i,"Effect on ILE for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
+}
+}
+```
 
- }
-  }
+## Interaction
+```{r, echo=FALSE, warning=FALSE}
+# jtools approach
+# for jtools: using export_summs and the chunk option results = 'asis' will give nice HTML and PTD tables, to.word = TRUE creates Word document with table
+
+# # Create data used for model with polynomials
+lm.data=filter(Epoch_List[[3]], Response != "NoRes", Group == 'ONH')
+lm.data$SNR2 = lm.data$SNR^2
+lm.data$SNR3 = lm.data$SNR^3
+# Use lm cause lme output does not work:
+ILE_SNR_Paradigm_Theta_Alpha.int <- lm(ILE ~ SNR * Paradigm * Theta * Alpha + SNR2 * Paradigm * Theta * Alpha +
+                                         SNR3 * Paradigm * Theta * Alpha, random=~1|Sub, data=lm.data, method="ML")
+# pred = first predictor, modx = x axis (line type), mod2 = panels
+print("linear SNR")
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = Alpha, modx = Theta, mod2 = SNR, alpha = .05) 
+print("SNR ^2")
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = Alpha, modx = Theta, mod2 = SNR2, alpha = .05)
+print("SNR ^3")
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = Alpha, modx = Theta, mod2 = SNR3, alpha = .05)
+
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = SNR, modx = Paradigm, alpha = .05)
+
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = SNR3, modx = Paradigm, alpha = .05)
+
+probe_interaction(ILE_SNR_Paradigm_Theta_Alpha.int, pred = SNR2, modx = Theta, alpha = .05)
+
 
 ```
 
-### Effect of Alpha on ILE
+```{r}
+
+```
+
+
+### Effect of Alpha & Theta on RLE by Group
 
 ```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
 Groups = c('ONH', 'OHL')
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
 
-for (Group_i in Groups){
-
+for (group_i in Groups) {
+  
 
  for (i in seq_along(Epoch_List)){
 
-# ILE
-ILE_Null <- lme(ILE ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+# RLE
+RLE_Null <- lme(RLE ~ 1, random=~1|Sub,
+                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-ILE_SNR <- lme(ILE ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+RLE_SNR.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE), random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-ILE_SNR_Alpha <- lme(ILE ~ SNR*poly(Alpha, degree = 3, raw = TRUE) , random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
+RLE_SNR_Paradigm.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) + Paradigm, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-    
-T_Result=anova(ILE_Null, ILE_SNR, ILE_SNR_Alpha)
+RLE_SNR_Paradigm.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
 
-print(paste("Effect on ILE for", Epoch_Win[i], Group_i))
+RLE_SNR_Paradigm_Theta.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm + Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+RLE_SNR_Paradigm_Theta.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+RLE_SNR_Paradigm_Theta_Alpha.main <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta + Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+RLE_SNR_Paradigm_Theta_Alpha.int <- lme(RLE ~ poly(SNR, degree = 3, raw = TRUE) * Paradigm * Theta * Alpha, random=~1|Sub,
+                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == group_i), method="ML")
+
+
+
+T_Result=anova(RLE_Null, RLE_SNR.main, RLE_SNR_Paradigm.main, RLE_SNR_Paradigm.int,RLE_SNR_Paradigm_Theta.main,
+               RLE_SNR_Paradigm_Theta.int,RLE_SNR_Paradigm_Theta_Alpha.main, RLE_SNR_Paradigm_Theta_Alpha.int)
+
+print(paste( group_i,"Effect on RLE for", Epoch_Win[i]))
 GLMM_Tables(T_Result, Table.model = T)
-
-
- }
-  }
-
+}
+}
 ```
 
-### Effect of ILE on Alpha
-
-```{r, echo=FALSE,results='asis'}
-Epoch_Win = c('Phrase' ,'Word' ,'Late')
-Groups = c('ONH', 'OHL')
-
-for (Group_i in Groups){
 
 
- for (i in seq_along(Epoch_List)){
-
-# Alpha
-Alpha_Null <- lme(Alpha ~ 1, random=~1|Sub,
-                   data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-Alpha_SNR <- lme(Alpha ~ SNR, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-Alpha_SNR_ILE <- lme(Alpha ~ SNR*ILE, random=~1|Sub,
-                 data=filter(Epoch_List[[i]], Response != "NoRes", Group == Group_i), method="ML")
-
-    
-T_Result=anova(Alpha_Null, Alpha_SNR, Alpha_SNR_ILE)
-
-print(paste("Effect on Alpha for", Epoch_Win[i], Group_i))
-GLMM_Tables(T_Result, Table.model = T)
-
-
-
- }
-  }
-
-```
 
 # plot Alpha and ILE for OHL:
 
@@ -2071,12 +2154,22 @@ write.csv(PC_df, 'PC_df.csv')
 #### Individual Theta Power over WIN Conditions
 
 ```{r, echo=FALSE, eval=FALSE, results='hide', fig.height = 7, fig.width = 9}
-a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot)), aes(x=SNR_plot, y=(Theta)))+
+a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot), Group == 'ONH'), aes(x=SNR_plot, y=(Theta)))+
     geom_point(color = "blue2", stat="summary", fun=mean)+
     geom_line(stat="summary", fun=mean, group=10, size=1.2, color="blue2")+
     stat_summary(  geom = "errorbar",fun.data = mean_se, color="blue3",size=.7, width=.25)+
   facet_wrap(facets = vars(Sub))+
-    labs(title = "Theta Frequency Power of WIN SNR")+
+    labs(title = "ONH - Theta Frequency Power of WIN SNR")+
+   xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")
+
+a
+
+a <- ggplot(dplyr::filter(EEG_LE, !is.na(SNR_plot), Group == 'OHL'), aes(x=SNR_plot, y=(Theta)))+
+    geom_point(color = "blue2", stat="summary", fun=mean)+
+    geom_line(stat="summary", fun=mean, group=10, size=1.2, color="blue2")+
+    stat_summary(  geom = "errorbar",fun.data = mean_se, color="blue3",size=.7, width=.25)+
+  facet_wrap(facets = vars(Sub))+
+    labs(title = "OHL - Theta Frequency Power of WIN SNR")+
    xlab("SIGNAL-TO-NOISE RATIO (dB)")+ ylab("POWER SPECTRUM \nDENSITY (PSD)")
 
 a
