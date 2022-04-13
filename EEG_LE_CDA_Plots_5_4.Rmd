@@ -653,7 +653,7 @@ Audiogram = dplyr::select(PTA_Demo, Sub, Group,L250:R8000) # select audiogram in
 
 ```{r, echo=FALSE}
 
-gg_pta(Audio.Mean, ylab = "Hearing Level in Decibels (dB)", xlim = c(125, 8900))+
+gg_pta(Audio.Mean, ylab = "Hearing Level in Decibels (dB)", xlim = c(125, 8900), ylim = c(90, -10))+
   aes(x=Freq, y=Threshold, group=Group, fill = group, shape = 21)+
   geom_line(  size=1.3)+
   geom_errorbar(aes(ymin=Threshold-SD, ymax=Threshold+SD), size=.8,width=.3,
