@@ -1319,15 +1319,23 @@ print(ggplot (Epoch_List[[i_epoch]], aes(x=Alpha_IAF))+
 ```{r, echo=FALSE}
 Freq_plot = NULL
 Freq_plot_IAF = NULL
+Freq_plot_Correct = NULL
  for (i in seq_along(Epoch_List)){
    # change alpha theta
-       Freq_plot[[i]] = Epoch_List[[i]]%>% dplyr::select( Sub, Theta, Alpha, SNR_plot, Group)%>%pivot_longer(cols = Theta:Alpha, 
+       Freq_plot[[i]] = filter(Epoch_List[[i]], Response != "NoRes")%>% 
+         dplyr::select( Sub, Theta, Alpha, SNR_plot, Group)%>%pivot_longer(cols = Theta:Alpha, 
                                            names_to = "Frequency",
                                       names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta", "Alpha"))),
                                            values_to = "Power")
-       Freq_plot_IAF[[i]] = Epoch_List[[i]]%>% dplyr::select( Sub, Theta_IAF, Alpha_IAF, SNR_plot, Group)%>%pivot_longer(cols = Theta_IAF:Alpha_IAF, 
+       Freq_plot_IAF[[i]] = filter(Epoch_List[[i]], Response != "NoRes")%>% 
+         dplyr::select( Sub, Theta_IAF, Alpha_IAF, SNR_plot, Group)%>%pivot_longer(cols = Theta_IAF:Alpha_IAF, 
                                            names_to = "Frequency",
                                       names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta_IAF", "Alpha_IAF"))),
+                                           values_to = "Power")
+      Freq_plot_Correct[[i]] = filter(Epoch_List[[i]], Response == 'Cor')%>% 
+         dplyr::select( Sub, Theta, Alpha, SNR_plot, Group)%>%pivot_longer(cols = Theta:Alpha, 
+                                           names_to = "Frequency",
+                                      names_transform = list(Frequency = ~readr::parse_factor(.x, levels = c("Theta", "Alpha"))),
                                            values_to = "Power")
         
  }
@@ -1391,6 +1399,50 @@ print(ggplot()+
         stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'ONH'),
                      aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
         geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                   aes( size = 4),stat="summary", fun=mean, color = 'black')+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c( 'dodgerblue2', 'red2'))+
+    scale_fill_manual(values = c("dodgerblue2","red2", 'white','white'))+
+         
+  
+      labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+     # ylab(bquote(10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .25))+
+ plot_finish)
+
+ }
+```
+
+## Correct only 
+
+```{r, echo=FALSE}
+Epoch_Win = c('Phrase' ,'Word' ,'Late')
+# Mycolors = c("Theta" = "dodgerblue2", "Alpha" = "red2")
+# Mycolors = c("dodgerblue2", "red2", 'gray')
+# Groups = c('ONH', 'OHL')
+
+
+ for (i in seq_along(Freq_plot)){
+
+print(ggplot()+
+        aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency)+
+        
+        geom_line(data=dplyr::filter(Freq_plot_Correct[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot_Correct[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot_Correct[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                   aes( size = 3),stat="summary", fun=mean, fill = c('white'), stroke = 1.6)+
+
+        geom_line(data=dplyr::filter(Freq_plot_Correct[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot_Correct[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot_Correct[[i]], !is.na(SNR_plot), Group == 'ONH'),
                    aes( size = 4),stat="summary", fun=mean, color = 'black')+
                    
 
@@ -1570,6 +1622,54 @@ GLMM_Tables(T_Result, Table.model = T)
 }
 contrasts(Epoch_List[[1]]$Group)
 contrasts(Epoch_List[[1]]$Paradigm)
+
+
+### Examine the null effect of group in carrier phrase
+# lm model of data for freq plot
+
+lm_freqplot =  lme(Power ~ Group, random=~1|Sub,
+                   data=filter(Freq_plot[[i]], Frequency == "Theta"), method="ML")
+
+summary(lm_freqplot)
+summary(Theta_Group)
+
+i = 1
+CarrierTheta=filter(Epoch_List[[i]], Response != "NoRes")
+
+summary(CarrierTheta$Theta)
+
+summary(Freq_plot)
+
+print(ggplot()+
+        aes(x=SNR_plot, y = Power, color = Frequency, fill = Frequency, group = Frequency, shape = Frequency)+
+        
+        geom_line(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'OHL'),
+                   aes( size = 3),stat="summary", fun=mean, fill = c('white'), stroke = 1.6)+
+
+        geom_line(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                  aes(size=.8),stat="summary", fun=mean, color = 'black')+
+        stat_summary(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                     aes(size=.7,width=.2),geom = "errorbar", fun.data = mean_se, position = "dodge", color = 'black')+
+        geom_point(data=dplyr::filter(Freq_plot[[i]], !is.na(SNR_plot), Group == 'ONH'),
+                   aes( size = 4),stat="summary", fun=mean, color = 'black')+
+                   
+
+
+   scale_shape_manual(values=c(25, 22))+
+   scale_color_manual (values = c( 'dodgerblue2', 'red2'))+
+    scale_fill_manual(values = c("dodgerblue2","red2", 'white','white'))+
+         
+  
+      labs(title = paste(Epoch_Win[i],"- Frequency Power Over WIN SNR"))+
+       xlab("SIGNAL-TO-NOISE RATIO (dB)")+   
+     # ylab(bquote(10~"*"~log[10](µV^2*"/"~Hz)))+
+    coord_cartesian(ylim=c(-1.25, .25))+
+ plot_finish)
+
 
 ```
 
