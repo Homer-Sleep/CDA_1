@@ -110,6 +110,7 @@ PTA_Demo_Raw$Sub=gsub("N0", "N_", PTA_Demo_Raw$Sub)
 PTA_Demo_Raw$Sub=gsub("L0", "L_", PTA_Demo_Raw$Sub)
 PTA_Demo_Raw$Sub=gsub("H0", "H_", PTA_Demo_Raw$Sub)
 PTA_Demo_Raw = droplevels(PTA_Demo_Raw) # drop all unused factor levels, for all factors in df!
+PTA_Demo_Raw = PTA_Demo_Raw[PTA_Demo_Raw$Sub != 'YN_22', ] # remove YN_22
 PTA_Demo_Raw$Sub=as.factor(PTA_Demo_Raw$Sub)
 PTA_Demo = PTA_Demo_Raw[,1:37]
 PTA_Demo$Age = as.numeric(PTA_Demo$Age)
@@ -604,7 +605,7 @@ EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols]
 
 ```{r}
 EEG.ml = as.data.frame(EEG.ml.dt)
-Per.ceiling = 3.5
+Per.ceiling = 2.5
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
 SNRs.d1 = seq(20,0, -4)
 EEG.ml$Ceiling.SNR = NA
@@ -719,10 +720,23 @@ Model.Results = data.frame(Model = c('RF.All', 'LM.All', 'RF.Lasso', 'LM.Lasso',
 ### Test Train split
 Currently I have a set group for the test train split. The set test group was from a random sample with 2 from the ONH and OHL groups. 
 ```{r}
-
-# test.obs = sample(sub.names, size = length(sub.names)*.2 ) # take 20% of data set obs
 # Need random sample with 2 from both older groups: 
-test.obs = c("YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07")
+Groups = c("YN","ONH","OHL")
+test.obs = list()
+for (i in Groups) {
+  thisdt = dplyr::filter(EEG.ml.wider, Group == i)
+  sub.names = unique(thisdt$Sub)
+  if (i == 'ONH'){
+    test.obs[[i]] = sample(sub.names, size = length(sub.names)*.3 )
+  }else{
+  test.obs[[i]] = sample(sub.names, size = length(sub.names)*.2 )
+  }
+}
+test.obs = c(test.obs[['YN']], test.obs[['ONH']], test.obs[['OHL']])
+
+paste('Test Sample Includes:')
+test.obs
+# test.obs = c("YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07")
 
 # Split:
 EEG.db = list()
@@ -730,7 +744,6 @@ EEG.db[['train']] =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Sub
 EEG.db[['test']] =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
 ```
 
-Test sample includes: "YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07"
 
 ### Test model for multicolliniearty 
 
