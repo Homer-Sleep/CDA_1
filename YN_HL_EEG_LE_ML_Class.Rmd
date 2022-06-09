@@ -718,7 +718,8 @@ Model.Results = data.frame(Model = c('RF.All', 'LM.All', 'RF.Lasso', 'LM.Lasso',
 
 
 ### Test Train split
-Currently I have a set group for the test train split. The set test group was from a random sample with 2 from the ONH and OHL groups. 
+The test group was from a random sample with 2 from the ONH and OHL groups. 
+
 ```{r}
 # Need random sample with 2 from both older groups: 
 Groups = c("YN","ONH","OHL")
