@@ -475,7 +475,7 @@ plot_finish
 
 ### Plot individual theta/alpha, ILE, RLE, Win Score:
 
-```{r echo=FALSE}
+```{r, echo=FALSE, eval=FALSE}
 Mycolors = c("Late.Theta" = "dodgerblue2", "Alpha" = "red2")
 
 # copy late theta to word epoch df:
@@ -604,6 +604,7 @@ EEG.ml.dt[, (CharacterCols) := lapply(.SD, as.numeric), .SDcols = CharacterCols]
 4) Mean of those SNRs is the predicted SNR to have peak LE. 
 
 ```{r}
+Subjects = unique(EEG.ml.dt$Sub)
 EEG.ml = as.data.frame(EEG.ml.dt)
 Per.ceiling = 3.5
 SNRs = seq(24,0, -4) #to select the SNRs analyze  eg. SNRs[1:which(SNRs == Ceiling.SNR)]
@@ -664,16 +665,13 @@ for (Sub.i in seq_along(Subjects)) {
                                                                    mean(c(Alpha.d1, LTheta.d1, Alpha.peak, LTheta.peak))), digits = 1)
 }
  table(EEG.ml$Mean.LE.SNR)
-# Histo = hist(EEG.ml$Mean.LE.SNR)
-# Histo[['counts']] = Histo[['counts']]/7 # divide by number of conditions to get counts of subjects, data is in long format
-# plot(Histo,  xlab = "Mean of Predicted peak LE SNR", main = 'Count of subject in each predicted peak LE SNR', col = 'gray')
 
 # by Group
  print(EEG.ml%>%ggplot(aes(x = Mean.LE.SNR, fill = Group ))+
- geom_histogram(aes(y = ..count../7), bins = 25, color="#e9ecef", alpha=0.6, position = 'identity')+
+ geom_histogram(aes(y = ..count../7), bins = 25, color="#e9ecef", alpha=0.5, position = 'identity')+
+   geom_vline(xintercept = 18.4, linetype="dashed", color = "grey51", size=1.3)+
    
-    scale_y_continuous (limits = c(0,8),breaks = (0:8))+
-   # scale_x_continuous ()+
+   scale_y_continuous (limits = c(0,8),breaks = (0:8))+
    scale_x_reverse(limits = c(25,7),breaks = (25:7))+
    theme_classic()+
    ylab('Participant Count'))
@@ -682,24 +680,23 @@ quantile(EEG.ml$Mean.LE.SNR)
 ```
 
 ### Catigories of Effort:
-Minimal = 6 - 4
+Minimal = 0 - 13
 Normal = 14 -18
-Above Normal = 18 - 24
+Above Normal >= 19 
 
-### Missing additional hearing eval data in YN, therefore the data allows two approaches:
-1) YN (n=34), OHL (n=10), ONH (n=8), using hearing thresholds and self-report, no EEG data
-2) OHL, ONH, using all hearing eval data without the YN. This would be a future direction.
-
-Will try first approach here. 
-
+Given that clinicians want cut points and that those that have normal or minimal listening effort are not the target group, this approach will classify two groups of Above Normal and Normal with a cut point of 18.5 SNR. 
 
 ```{r}
+# Make classification variable
+EEG.ml$label = as.numeric(ifelse(EEG.ml$Mean.LE.SNR <= 18.5,  '0',
+                     ifelse(EEG.ml$Mean.LE.SNR < 24, '1','1')))
+
 # Fix Col name issue
-setnames(EEG.ml, "Veteran?","Veteran")
+setnames(EEG.ml, "Veteran?","Veteran", skip_absent=TRUE)
 
 # remove unwanted variables:
 additional.HE = c('TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' )
-toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA", 'Handedness', 'Veteran', 'Gender',  "Theta","Late.Theta", "Alpha")
+toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA", 'Handedness', 'Veteran', 'Gender',  "Theta","Late.Theta", "Alpha", "Mean.LE.SNR")
 toRemove = c(additional.HE, toRemove, 'Ethnicity', 'Race') # Have to remove Ethnicity, only one non-white
 EEG.ml.wider = EEG.ml[!(colnames(EEG.ml) %in% toRemove)]
 # pivot wider:
@@ -709,13 +706,6 @@ EEG.ml.wider = pivot_wider (EEG.ml.wider,
 print('Which variables have NAs?')
 apply(is.na(EEG.ml.wider), 2, which)  
 ```
-
-```{r}
-#create table for model result comparison
-Model.Results = data.frame(Model = c('RF.All', 'LM.All', 'RF.Lasso', 'LM.Lasso', 'RF.EL', 'LM.EL', 'RF.Inter.EL', 'LM.Inter.EL'), 
-                           R2 = rep(NA, 8), RMSE = rep(NA, 8))
-```
-
 
 ### Test Train split
 The test group was from a random sample with 2 from the ONH and OHL groups. 
@@ -737,58 +727,109 @@ test.obs = c(test.obs[['YN']], test.obs[['ONH']], test.obs[['OHL']])
 
 paste('Test Sample Includes:')
 test.obs
-# test.obs = c("YN_10","ONH_17", "OHL_04", "OHL_07", "YN_39" , "YN_09" , "YN_17",  "YN_13",  "YN_36" , "ONH_07")
+```
+## Create three variable data sets to predict listening effort catigory 1) EEG, WIN, and Clinical 2) WIN and Clinical 3) Clnical
+```{r}
 
-# Split:
-EEG.db = list()
-EEG.db[['train']] =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
-EEG.db[['test']] =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
+# Create EEG, WIN, and Clinical data sets: 
+EEG.train =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
+EEG.test =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
+
+# Create WIN and Clinical data sets:
+
+WIN.Clinic.train = dplyr::select(EEG.train, -c(Alpha.d1,LTheta.d1,Alpha.peak,LTheta.peak))
+WIN.Clinic.test = dplyr::select(EEG.test, -c(Alpha.d1,LTheta.d1,Alpha.peak,LTheta.peak))
+
+# Create Clinical data sets:
+Clinic.train = dplyr::select(EEG.train, c(Sub, Age,Education,L250,L500,L1000,L2000,L3000, L4000,L6000,
+                 L8000,R250,R500,R1000,R2000,R3000,R4000, R6000,R8000,PTA,HF_PTA, label))
+Clinic.test = dplyr::select(EEG.test, c(Sub, Age,Education,L250,L500,L1000,L2000,L3000, L4000,L6000,
+                 L8000,R250,R500,R1000,R2000,R3000,R4000, R6000,R8000,PTA,HF_PTA, label))
+
+
 ```
 
-
-### Test model for multicolliniearty 
 
 ```{r}
-# Unwanted predictors for model
-Unwanted = c( 'Sub', 'Group',"Alpha.d1", "LTheta.d1","Alpha.peak","LTheta.peak")
-
-
-# Build linear model
-model1 <- lm(Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
-# Make predictions
-predictions <- model1 %>% predict(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
-
-# Model performance
-data.frame(
-  RMSE = RMSE(predictions, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR),
-  R2 = R2(predictions,EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted]$Mean.LE.SNR)
-)
-
-try(
-car::vif(model1))
-# collect alias variables
-alias_list = rownames(alias(model1)[["Complete"]])
-
-# test new model without alias variables: 
-Unwanted = c(Unwanted, alias_list)
-
-# Build linear model
-model1 <- lm(Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
-
-try(
-car::vif(model1))
-## # still trouble with colinearity remove win scores? 
-Unwanted = c(Unwanted, 'WIN_Score_24', 'WIN_Score_20'  )
-
-# Build linear model
-model1 <- lm(Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
-
-try(
-car::vif(model1))
+#create table for model result comparison: logistical Regression (LR), Random Forest (RF), XGBoost (XGB)
+Model.Results = data.frame(Model = c('LR.All', 'RF.All', 'XGB.All', 'LR.Lasso', 'RF.Lasso', 'XGB.Lasso', 'LR.EL', 'RF.EL', 'XGB.EL',
+                                     'LR.Inter.EL', 'RF.Inter.EL','XGB.Inter.EL'), 
+                           R2 = rep(NA, 12), RMSE = rep(NA, 12), Acc = rep(NA, 12))
 ```
+
+
+## Logistic Regression 
+
+```{r}
+
+TrainSetNames = c('EEG.train', 'WIN.Clinic.train', 'Clinic.train')
+TestSetNames = c('EEG.test', 'WIN.Clinic.test', 'Clinic.test')
+
+for (i in 1:length(TrainSetNames)){
+  print(paste('Results for', TrainSetNames[i]))
+  #logistic model
+  train_data = get(TrainSetNames[i])[,-1]
+  test_data = get(TestSetNames[i])[,-1]
+  this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
+ 
+  # predict
+  pred = predict(this_model, get(TestSetNames[i])[,-1], type = 'response')
+  prediction = as.numeric(pred > 0.5)
+
+  # confusion matrix of test set
+  print(confusionMatrix(factor(prediction),
+                factor(test_data$label),
+                mode = "everything"))
+}
+
+```
+
+## Logistic regression and Variance Inflation Factor (VIF)
+
+```{r}
+TrainSetNames = c('EEG.train', 'WIN.Clinic.train', 'Clinic.train')
+TestSetNames = c('EEG.test', 'WIN.Clinic.test', 'Clinic.test')
+
+for (i in 1:length(TrainSetNames)){
+  print(paste('Results for', TrainSetNames[i]))
+  #logistic model
+  train_data = get(TrainSetNames[i])[,-1]
+  test_data = get(TestSetNames[i])[,-1]
+  this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
+ 
+  # Variance Inflation Factor (VIF)
+  tried = try(car::vif(this_model))
+  
+  if (inherits(tried, "try-error")){
+    # collect alias variables and add 'Sub' to be removed from model
+    alias_list = rownames(alias(this_model)[["Complete"]])
+    print(paste(TrainSetNames[i], 'Had alias. Will rerun model with these variables removed'))
+    print(alias_list)
+    # run model without alias:
+    this_model = glm(label ~ ., data=train_data[!colnames(train_data) %in% alias_list], family = 'binomial'(link = 'logit')) 
+  } # if alias error end
+  
+  # predict
+  pred = predict(this_model, get(TestSetNames[i])[,-1], type = 'response')
+  prediction = as.numeric(pred > 0.5)
+
+  # confusion matrix of test set
+Result = confusionMatrix(factor(prediction),
+                factor(test_data$label),
+                mode = "everything")
+}
+
+  # # model summary
+  # summary(this_model)
+
+
+
+
+```
+
+Logistic regression with the clinical variables has comparable accuracy as models with more variables. 
+
+
 
 ### Try Random Forest and linear regression with all variables
 
@@ -797,8 +838,6 @@ car::vif(model1))
 # Filter out unwanted variables: 
   EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
                          data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], ntree = 4000, importance=TRUE)
-
-
 
   # model output
   EEG.model
@@ -1752,22 +1791,5 @@ xgb.ggplot.importance(importance_matrix)
 
 ```
 
-## Compare to logistic regression
 
-```{r}
-EEG.db.train.clinic$label = train.label
-EEG.db.test.clinic$label = test.label
-
-EEG.lm.model = lm(label ~ ., data=EEG.db.train.clinic[,-1], family = 'binomial')
-pred = predict(EEG.lm.model, EEG.db.test.clinic, type = 'response')
-
-prediction = as.numeric(pred > 0.5)
-
-# confusion matrix of test set
-confusionMatrix(factor(prediction),
-                factor(test.label),
-                mode = "everything")
-
-
-```
 
