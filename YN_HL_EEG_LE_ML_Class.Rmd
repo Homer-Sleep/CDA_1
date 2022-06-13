@@ -674,7 +674,8 @@ for (Sub.i in seq_along(Subjects)) {
    scale_y_continuous (limits = c(0,8),breaks = (0:8))+
    scale_x_reverse(limits = c(25,7),breaks = (25:7))+
    theme_classic()+
-   ylab('Participant Count'))
+   ylab('Participant Count')+
+   xlab('Peak Listening Effort SNR'))
 quantile(EEG.ml$Mean.LE.SNR)
 
 ```
@@ -696,8 +697,8 @@ setnames(EEG.ml, "Veteran?","Veteran", skip_absent=TRUE)
 
 # remove unwanted variables:
 additional.HE = c('TFI', 'Left SRT', 'Right SRT', 'Left Word Rec', 'Right Word Rec', 'SII Left', 'SII Right' )
-toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA", 'Handedness', 'Veteran', 'Gender',  "Theta","Late.Theta", "Alpha", "Mean.LE.SNR")
-toRemove = c(additional.HE, toRemove, 'Ethnicity', 'Race') # Have to remove Ethnicity, only one non-white
+toRemove = c('SNR', 'SAE', 'PCE', "SNR_num","SNR_inver",'SNR_plot',"Neuroeconomic", "Proxy1", "WIN Test Level", 'MoCA Extra Point?', "Adj_MoCA", 'Handedness', 'Veteran', 'Gender',  "Theta","Late.Theta", "Alpha", "Mean.LE.SNR", 'Ethnicity', 'Race')# Have to remove Ethnicity, only one non-white
+toRemove = c(additional.HE, toRemove) 
 EEG.ml.wider = EEG.ml[!(colnames(EEG.ml) %in% toRemove)]
 # pivot wider:
 EEG.ml.wider = pivot_wider (EEG.ml.wider,
@@ -728,17 +729,42 @@ test.obs = c(test.obs[['YN']], test.obs[['ONH']], test.obs[['OHL']])
 paste('Test Sample Includes:')
 test.obs
 ```
+
+## Distribution of Peak LE SNR by train/test data sets.
+```{r}
+train_LE_SNR = dplyr::select(EEG.ml, Sub, Group, Mean.LE.SNR)%>% dplyr:: filter(!Sub %in% test.obs)
+test_LE_SNR = dplyr::select(EEG.ml, Sub, Group, Mean.LE.SNR)%>% dplyr:: filter(Sub %in% test.obs)
+train_test = c('train_LE_SNR', 'test_LE_SNR')
+for (i in train_test){
+  this_df = get(i)
+ print(this_df%>%ggplot(aes(x = Mean.LE.SNR, fill = Group ))+
+ geom_histogram(aes(y = ..count../7), bins = 25, color="#e9ecef", alpha=0.5, position = 'identity')+
+   geom_vline(xintercept = 18.4, linetype="dashed", color = "grey51", size=1.3)+
+   
+   scale_y_continuous (limits = c(0,8),breaks = (0:8))+
+   scale_x_reverse(limits = c(25,7),breaks = (25:7))+
+   theme_classic()+
+   ylab('Participant Count')+
+   xlab('Peak Listening Effort SNR'))
+ 
+  print(quantile(this_df$Mean.LE.SNR))
+  }
+
+```
+
+
 ## Create three variable data sets to predict listening effort catigory 1) EEG, WIN, and Clinical 2) WIN and Clinical 3) Clnical
+Update, just run Clinical data set
 ```{r}
 
-# Create EEG, WIN, and Clinical data sets: 
-EEG.train =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
-EEG.test =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
-
-# Create WIN and Clinical data sets:
-
-WIN.Clinic.train = dplyr::select(EEG.train, -c(Alpha.d1,LTheta.d1,Alpha.peak,LTheta.peak))
-WIN.Clinic.test = dplyr::select(EEG.test, -c(Alpha.d1,LTheta.d1,Alpha.peak,LTheta.peak))
+# # Create EEG, WIN, and Clinical data sets: 
+# EEG.train =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
+# EEG.test =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
+# 
+# # Create WIN and Clinical data sets:
+# 
+# WIN.Clinic.train = dplyr::select(EEG.train, -c(Alpha.d1,LTheta.d1,Alpha.peak,LTheta.peak))
+# WIN.Clinic.test = dplyr::select(EEG.test, -c(Alpha.d1,LTheta.d1,Alpha.peak,LTheta.peak))
 
 # Create Clinical data sets:
 Clinic.train = dplyr::select(EEG.train, c(Sub, Age,Education,L250,L500,L1000,L2000,L3000, L4000,L6000,
@@ -751,10 +777,13 @@ Clinic.test = dplyr::select(EEG.test, c(Sub, Age,Education,L250,L500,L1000,L2000
 
 
 ```{r}
-#create table for model result comparison: logistical Regression (LR), Random Forest (RF), XGBoost (XGB)
-Model.Results = data.frame(Model = c('LR.All', 'RF.All', 'XGB.All', 'LR.Lasso', 'RF.Lasso', 'XGB.Lasso', 'LR.EL', 'RF.EL', 'XGB.EL',
-                                     'LR.Inter.EL', 'RF.Inter.EL','XGB.Inter.EL'), 
-                           R2 = rep(NA, 12), RMSE = rep(NA, 12), Acc = rep(NA, 12))
+#create table for model result comparison: logistic Regression (LR), Random Forest (RF), XGBoost (XGB)
+Model_Test_Result = data.frame(Model = c('Logistic',  'Lasso', 'ElasticNet',
+                                     'ExpandedElasticNet','RandomForest', 'XGBoost'), 
+                           Accuracy = rep(NA, 6), Acc_p = rep(NA, 6), Sensitivity = rep(NA, 6), Specificity = rep(NA, 6), 
+                           Bal_Acc = rep(NA, 6))
+
+Model_Train_Result = Model_Test_Result
 ```
 
 
@@ -762,116 +791,32 @@ Model.Results = data.frame(Model = c('LR.All', 'RF.All', 'XGB.All', 'LR.Lasso', 
 
 ```{r}
 
-TrainSetNames = c('EEG.train', 'WIN.Clinic.train', 'Clinic.train')
-TestSetNames = c('EEG.test', 'WIN.Clinic.test', 'Clinic.test')
-
-for (i in 1:length(TrainSetNames)){
-  print(paste('Results for', TrainSetNames[i]))
   #logistic model
-  train_data = get(TrainSetNames[i])[,-1]
-  test_data = get(TestSetNames[i])[,-1]
+  train_data = Clinic.train[,-1]
+  test_data = Clinic.test[,-1]
+  
   this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
  
   # predict
-  pred = predict(this_model, get(TestSetNames[i])[,-1], type = 'response')
+  pred = predict(this_model, test_data, type = 'response')
   prediction = as.numeric(pred > 0.5)
 
   # confusion matrix of test set
-  print(confusionMatrix(factor(prediction),
-                factor(test_data$label),
-                mode = "everything"))
-}
-
-```
-
-## Logistic regression and Variance Inflation Factor (VIF)
-
-```{r}
-TrainSetNames = c('EEG.train', 'WIN.Clinic.train', 'Clinic.train')
-TestSetNames = c('EEG.test', 'WIN.Clinic.test', 'Clinic.test')
-
-for (i in 1:length(TrainSetNames)){
-  print(paste('Results for', TrainSetNames[i]))
-  #logistic model
-  train_data = get(TrainSetNames[i])[,-1]
-  test_data = get(TestSetNames[i])[,-1]
-  this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
- 
-  # Variance Inflation Factor (VIF)
-  tried = try(car::vif(this_model))
-  
-  if (inherits(tried, "try-error")){
-    # collect alias variables and add 'Sub' to be removed from model
-    alias_list = rownames(alias(this_model)[["Complete"]])
-    print(paste(TrainSetNames[i], 'Had alias. Will rerun model with these variables removed'))
-    print(alias_list)
-    # run model without alias:
-    this_model = glm(label ~ ., data=train_data[!colnames(train_data) %in% alias_list], family = 'binomial'(link = 'logit')) 
-  } # if alias error end
-  
-  # predict
-  pred = predict(this_model, get(TestSetNames[i])[,-1], type = 'response')
-  prediction = as.numeric(pred > 0.5)
-
-  # confusion matrix of test set
-Result = confusionMatrix(factor(prediction),
+  this_result = confusionMatrix(factor(prediction),
                 factor(test_data$label),
                 mode = "everything")
-}
-
-  # # model summary
-  # summary(this_model)
-
-
-
-
-```
-
-Logistic regression with the clinical variables has comparable accuracy as models with more variables. 
-
-
-
-### Try Random Forest and linear regression with all variables
-
-```{r, fig.width=7, fig.height=8 }
-
-# Filter out unwanted variables: 
-  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], ntree = 4000, importance=TRUE)
-
-  # model output
-  EEG.model
-  # plot tree error
-  plot(EEG.model)
-
-varImpPlot(EEG.model)
-
-pred = predict(EEG.model, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
-
-  # Find Test R^2
-  Model.Results[1, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
-  
-print('Compare to linear regression')
-EEG.model.lm = lm(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted])
-  # model output
-  EEG.model.lm
-    print('VIF of lm')
-car::vif(EEG.model.lm)
-
-pred = predict(EEG.model.lm, EEG.db[['test']][!colnames(EEG.db[['test']]) %in% Unwanted])
-
-  # Find Test R^2
-   Model.Results[2, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
+  # select measures of classification
+  Model_Test_Result[1,2] = this_result[["overall"]][["Accuracy"]]
+  Model_Test_Result[1,3] = this_result[["overall"]][["AccuracyPValue"]]
+  Model_Test_Result[1,4] = this_result[["byClass"]][["Sensitivity"]]
+  Model_Test_Result[1,5] = this_result[["byClass"]][["Specificity"]]
+  Model_Test_Result[1,6] = this_result[["byClass"]][["Balanced Accuracy"]]
+  Model_Test_Result
 
 ```
 
-### Regression tree output explainer: 
-%IncMSE: hold the model constant except for one variable. Using the values of that variable in the data set, randomly (permute) them in the model and get the OOB (out of bag CV) error. So, %IncMSE tells us how much randomizing the data for individual variables effects the predictive power of the model. The more it effects the outcome, the more important the variable to OOB prediction, the higher the %IncMSE.
 
-IncNodePurity: at each split, you can calculate how much this split reduces node impurity (for regression trees, the difference between RSS before and after the split). This is summed over all splits for that variable, over all trees.
 
-### Examine variables to find most important, multicolliniearty is major issue: 
 
 Look at lasso and parameter tuning: https://uc-r.github.io/random_forests
 
@@ -886,79 +831,73 @@ To determine what value to use for lambda, we’ll perform k-fold cross-validati
 
 Note that the function cv.glmnet() automatically performs k-fold cross validation using k = 6 folds.
 
-### Lasso Regression
+### Lasso Regression #2
 ```{r}
 # Add output variable to Unwanted variables list for lasso
+# Training data set:
+# make output variable
+train_output = Clinic.train$label 
+# make parameters matrix
+train_data = data.matrix(Clinic.train[!colnames(Clinic.train) == 'label'])
 
+# Test data set:
+# make output variable
+test_output = Clinic.test$label 
+# make parameters matrix
+test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
 
-  # training data set:
-  Mean.LE.SNR.train = EEG.db[['train']]$Mean.LE.SNR # make output variable
-  Predictors.train = data.matrix(EEG.db[['train']][!colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', Unwanted)]) # make parameters matrix
-  # test data set
-  Mean.LE.SNR.test = EEG.db[['test']]$Mean.LE.SNR # make output variable
-  Predictors.test = data.matrix(EEG.db[['test']][!colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', Unwanted)]) # make parameters matrix
+lambda_seq = 10^seq(2, -2, by = -.1)
+EEG.lasso = cv.glmnet(train_data, train_output , alpha = 1, nfolds = 6, lambda = lambda_seq ) # run 6-fold cross-validation of lasso
+
+# plot test MSE by lambda value
+plot( EEG.lasso )
   
-  lambda_seq = 10^seq(2, -2, by = -.1)
-  EEG.lasso = cv.glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, nfolds = 6, lambda = lambda_seq ) # run 5-fold cross-validation of lasso
-  # # Find optimal lambda value to minimize MSE
-  # print(EEG.lasso$lambda.min)
-  # plot test MSE by lambda value
-  plot( EEG.lasso )
-  
-  # find coefficients of best model:
-  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = 1, lambda = EEG.lasso$lambda.min)
-  EEG.best.model.coeff=  coef(best_model)
-  EEG.best.model.coeff
+# find coefficients of best model:
+best_model = glmnet(train_data, train_output , alpha = 1, lambda = EEG.lasso$lambda.min)
+EEG.best.model.coeff=  coef(best_model)
+EEG.best.model.coeff
   # print(plot(best_model, xvar = "lambda"))
   # Rebuilding the model with best lambda value identified
-  pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = Predictors.test)
+
+
+# predict
+pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = test_data, type = 'response')
+prediction = as.numeric(pred > 0.5)
+
+# confusion matrix of test set
+this_result = confusionMatrix(factor(prediction),
+                factor(test_output),
+                mode = "everything")
+# select measures of classification
+Model_Test_Result[2,2] = this_result[["overall"]][["Accuracy"]]
+Model_Test_Result[2,3] = this_result[["overall"]][["AccuracyPValue"]]
+Model_Test_Result[2,4] = this_result[["byClass"]][["Sensitivity"]]
+Model_Test_Result[2,5] = this_result[["byClass"]][["Specificity"]]
+Model_Test_Result[2,6] = this_result[["byClass"]][["Balanced Accuracy"]]
+Model_Test_Result
   
-  # Find R^2
-  find.r2(pred, Mean.LE.SNR.test, output = FALSE)
-
-lasso_var = rownames(EEG.best.model.coeff)[EEG.best.model.coeff[,1] !=0]
-lasso_var = lasso_var[-1] # remove 'intercept' from vector
-print(lasso_var)
 ```
 
-
-### Try Random Forest with just Lasso variables
-
-```{r}
-
-  EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', lasso_var)], ntree = 2000, importance=TRUE)
-
-  # model output
-  EEG.model
-  # plot tree error
-  plot(EEG.model)
-
-varImpPlot(EEG.model)
-
-pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', lasso_var)])
-
-  # Find Test R^2
-  Model.Results[3, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR)
-
-print('Compare to linear regression')
-EEG.model.lm = lm(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', lasso_var)])
-  # model output
-  EEG.model.lm
-  print('VIF of lm')
-car::vif(EEG.model.lm)
-
-pred = predict(EEG.model.lm, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', lasso_var)])
-
-  # Find Test R^2
-  Model.Results[4, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
-```
-
- 
-### Elastic-Net, avg of 50 interations
+### Elastic-Net, avg of 50 interations #3
 
 ```{r}
+#Data prep
+train_data = Clinic.train
+train_data$label = factor(train_data$label)
+
+# # make output variable
+# train_output = Clinic.train$label 
+# # make parameters matrix
+train_data_NoLabel = data.matrix(Clinic.train[!colnames(Clinic.train) == 'label'])
+
+# Test data set:
+# make output variable
+test_output = Clinic.test$label 
+# make parameters matrix
+test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
+
+
+
 # From https://daviddalpiaz.github.io/r4sl/elastic-net.html
 # Train n= 42, 6 folds give 7 results
 get_best_result = function(caret_fit) {
@@ -972,8 +911,7 @@ cv_6 = trainControl(method = "cv", number = 6)
 el.net.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
                            RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
 for (i in 1:50){
-el.net = train(Mean.LE.SNR ~., data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], 
-               method = "glmnet", trControl = cv_6)
+el.net = train(label ~., data =train_data, method = "glmnet", trControl = cv_6)
 el.net.result[i,]= get_best_result(el.net)[1,1:4]
 }
 
@@ -983,143 +921,158 @@ print('how often was alpha == 1?')
  print('Already did a lasso, lets try alpha = .055')
  # New model with best results
   # find coefficients of best model:
-  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = .55, lambda = 0.5768)
+  best_model = glmnet(train_data_NoLabel, train_output , alpha = .55, lambda = min(el.net.result$lambda))
   EEG.best.model.coeff=  coef(best_model)
   print( EEG.best.model.coeff)
   # print(plot(best_model, xvar = "lambda"))
   # Rebuilding the model with best lambda value identified
-  pred <- predict( best_model, newx = Predictors.test)
-  
-  # Find R^2
 
-  find.r2(pred, Mean.LE.SNR.test, output = FALSE)
+# predict
+pred <- predict( best_model, newx = test_data, type = 'response')
+prediction = as.numeric(pred > 0.5)
 
-  plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
-  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
-    geom_jitter(size = 3, alpha = .7)+
-    geom_smooth(method = 'lm')
-  
-  el.net.var = rownames(EEG.best.model.coeff)[EEG.best.model.coeff[,1] !=0]
-  el.net.var = el.net.var[-1] # remove 'intercept' from vector
-  print(el.net.var)
-                        
-```
-
-### Try random forest with elastic net variables
-```{r}
-
-EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', el.net.var)], ntree = 4000, importance=TRUE)
-
-
-
-  # model output
-  EEG.model
-  # plot tree error
-  plot(EEG.model)
-
-  varImpPlot(EEG.model)
-
-pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', el.net.var)])
-
-  # Find Test R^2
-  Model.Results[5, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR)
-   plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
-  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
-  geom_jitter(size = 3, alpha = .7)+
-    geom_smooth(method = 'lm')
-  
-print('Compare to linear regression')
-EEG.model.lm = lm(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', el.net.var)])
-  # model output
-  EEG.model.lm
-  print('VIF of lm')
-car::vif(EEG.model.lm)
-
-pred = predict(EEG.model.lm, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', el.net.var)])
-
-  # Find Test R^2
- Model.Results[6, 2:3] =  find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
- 
+# confusion matrix of test set
+this_result = confusionMatrix(factor(prediction),
+                factor(test_output),
+                mode = "everything")
+# select measures of classification
+Model_Test_Result[3,2] = this_result[["overall"]][["Accuracy"]]
+Model_Test_Result[3,3] = this_result[["overall"]][["AccuracyPValue"]]
+Model_Test_Result[3,4] = this_result[["byClass"]][["Sensitivity"]]
+Model_Test_Result[3,5] = this_result[["byClass"]][["Specificity"]]
+Model_Test_Result[3,6] = this_result[["byClass"]][["Balanced Accuracy"]]
+Model_Test_Result
 ```
 
 ### Now try a larger model search with all interactions and 10 alpha values, avg of 50 interations.
 
 ```{r, warning=FALSE}
+#Data prep
+train_data = Clinic.train
+train_data$label = factor(train_data$label)
+
+# # make output variable
+ train_output = Clinic.train$label 
+# # make parameters matrix
+train_data_NoLabel = data.matrix(Clinic.train[!colnames(Clinic.train) == 'label'])
+
+# Test data set:
+# make output variable
+test_output = Clinic.test$label 
+# make parameters matrix
+test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
+
 set.seed(42)
 cv_6 = trainControl(method = "cv", number = 6)
 el.net.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
                            RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
 for (i in 1:50){
-el.net = train(Mean.LE.SNR ~.^2, data = EEG.db[['train']][!colnames(EEG.db[['train']]) %in% Unwanted], 
-               method = "glmnet", trControl = cv_6, tuneLength = 10)
+el.net = train(label ~.^2, data = train_data, method = "glmnet", trControl = cv_6, tuneLength = 10)
 el.net.result[i,]= get_best_result(el.net)[1,1:4]
 }
 
 summary(el.net.result)
 best.el.net = el.net.result[which.min(el.net.result$RMSE),]
 
- # New model with best results
-  # find coefficients of best model:
-  best_model = glmnet(Predictors.train, Mean.LE.SNR.train , alpha = best.el.net$alpha, lambda = best.el.net$lambda)
-  EEG.best.model.coeff=  coef(best_model)
-  print( EEG.best.model.coeff)
-  # print(plot(best_model, xvar = "lambda"))
-  # Rebuilding the model with best lambda value identified
-  pred <- predict( best_model, newx = Predictors.test)
+# New model with best results
+# find coefficients of best model:
+best_model = glmnet(train_data_NoLabel, train_output , alpha = best.el.net$alpha, lambda = best.el.net$lambda)
+EEG.best.model.coeff=  coef(best_model)
+print( EEG.best.model.coeff)
 
-  # Find R^2
-  find.r2(pred, Mean.LE.SNR.test, output = FALSE)
+# predict
+pred <- predict( best_model, newx = test_data, type = 'response')
+prediction = as.numeric(pred > 0.5)
 
-  plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
-  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
-    geom_jitter(size = 3, alpha = .7)+
-    geom_smooth(method = 'lm')
-  
-  el.net.inter.var = rownames(EEG.best.model.coeff)[EEG.best.model.coeff[,1] !=0]
-  el.net.inter.var = el.net.inter.var[-1] # remove 'intercept' from vector
-  print(el.net.inter.var)
+# confusion matrix of test set
+this_result = confusionMatrix(factor(prediction),
+                factor(test_output),
+                mode = "everything")
+# select measures of classification
+Model_Test_Result[4,2] = this_result[["overall"]][["Accuracy"]]
+Model_Test_Result[4,3] = this_result[["overall"]][["AccuracyPValue"]]
+Model_Test_Result[4,4] = this_result[["byClass"]][["Sensitivity"]]
+Model_Test_Result[4,5] = this_result[["byClass"]][["Specificity"]]
+Model_Test_Result[4,6] = this_result[["byClass"]][["Balanced Accuracy"]]
+Model_Test_Result
   
 
 ```
 
-### Try random forest with larger model elastic net variables
-```{r}
-
-EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', el.net.inter.var)], ntree = 4000, importance=TRUE)
 
 
+
+
+## Random Forest 
+
+```{r, fig.width=7, fig.height=8 }
+
+# Random forest data prep 
+train_data = Clinic.train
+train_data$label = factor(train_data$label)
+
+test_data = Clinic.test
+test_data$label = factor(test_data$label)
+
+
+# Model
+  RF_model = randomForest(formula = label ~ ., 
+                         data = train_data, ntree = 4000, importance=TRUE)
 
   # model output
-  EEG.model
+  RF_model
   # plot tree error
-  plot(EEG.model)
+  plot(RF_model)
 
-  varImpPlot(EEG.model)
+varImpPlot(RF_model)
 
-pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', el.net.inter.var)])
+prediction = predict(RF_model, test_data, type = 'response')
 
-  # Find Test R^2
- Model.Results[7, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR)
-   plot_result = data.frame( Mean.LE.SNR.test,  pred = as.vector(pred))
-  ggplot(data = plot_result, aes(x = Mean.LE.SNR.test, y = pred))+
-  geom_jitter(size = 3, alpha = .7)+
-    geom_smooth(method = 'lm')
+ # prediction = as.numeric(pred > 0.5)
 
-print('Compare to linear regression')
-EEG.model.lm = lm(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% c('Mean.LE.SNR', el.net.inter.var)])
-  # model output
-  EEG.model.lm
-  print('VIF of lm')
-car::vif(EEG.model.lm)
+  # confusion matrix of test set
+  this_result = confusionMatrix(prediction,
+                test_data$label,
+                mode = "everything")
+  # select measures of classification
+  Model_Test_Result[5,2] = this_result[["overall"]][["Accuracy"]]
+  Model_Test_Result[5,3] = this_result[["overall"]][["AccuracyPValue"]]
+  Model_Test_Result[5,4] = this_result[["byClass"]][["Sensitivity"]]
+  Model_Test_Result[5,5] = this_result[["byClass"]][["Specificity"]]
+  Model_Test_Result[5,6] = this_result[["byClass"]][["Balanced Accuracy"]]
+  Model_Test_Result
 
-pred = predict(EEG.model.lm, EEG.db[['test']][colnames(EEG.db[['test']]) %in% c('Mean.LE.SNR', el.net.inter.var)])
+```
 
-  # Find Test R^2
- Model.Results[8, 2:3] = find.r2(pred, EEG.db[['test']]$Mean.LE.SNR )
+
+### Fine tune model:
+Parameters in tuneRF function
+The stepFactor specifies at each iteration, mtry is inflated (or deflated) by this value
+The improve specifies the (relative) improvement in OOB error must be by this much for the search to continue
+The trace specifies whether to print the progress of the search
+The plot specifies whether to plot the OOB error as function of mtry
+
+```{r}
+# make output variable
+train_output = factor(Clinic.train$label)
+# # make parameters matrix
+train_data_NoLabel = Clinic.train[!colnames(Clinic.train) == 'label']
+
+# Test data set:
+# make output variable
+test_output = factor(Clinic.test$label)
+# make parameters matrix
+test_data = Clinic.test[!colnames(Clinic.test) == 'label']
+
+
+#From: https://www.listendata.com/2014/11/random-forest-with-r.html
+
+mtry <- tuneRF(train_data_NoLabel, train_output, ntreeTry=3500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+print(mtry)
+print(best.m)
 ```
 
 ## Compare Model Results
@@ -1132,284 +1085,60 @@ print(paste('Model with lowest RMSE = ', Model.Results[which.min(Model.Results$R
 
 ```
 
-### Fine tune model:
-Parameters in tuneRF function
-The stepFactor specifies at each iteration, mtry is inflated (or deflated) by this value
-The improve specifies the (relative) improvement in OOB error must be by this much for the search to continue
-The trace specifies whether to print the progress of the search
-The plot specifies whether to plot the OOB error as function of mtry
-
-```{r}
-#From: https://www.listendata.com/2014/11/random-forest-with-r.html
-
-mtry <- tuneRF(EEG.db[['train']][colnames(EEG.db[['train']]) %in% lasso_var],
-               EEG.db[['train']]$Mean.LE.SNR, ntreeTry=3500,
-               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
-best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
-print(mtry)
-print(best.m)
-```
-
- Lets look at what is the best setting for the test data: 
-
-```{r}
-mtry.list = 2:length(lasso_var)
-Avg.Result = cbind.data.frame( mtry.list, Avg.RMSE = rep(NA,length(mtry.list)), R2 = rep(NA, length(mtry.list)))
-lasso_var.out =  c('Mean.LE.SNR',lasso_var)
-ntree.best = 2500
-# Let's speed things up with a data.table:
-EEG.db.train = as.data.table(EEG.db[['train']])
-EEG.db.test = as.data.table(EEG.db[['test']])
-for (i in 1:length(mtry.list)) {
-  R_2 = NULL
-  RMSE.Result = NULL
-  for (ii in 1:50) {
-     EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db.train[,..lasso_var.out], ntree = ntree.best, mtry = mtry.list[i], importance=TRUE)
-pred = predict(EEG.model, EEG.db.test[,..lasso_var.out])
-
-  # Find Test R^2
-
- R_2[ii] = find.r2(pred, EEG.db.test$Mean.LE.SNR, plot = FALSE, text = FALSE)[1]
- RMSE.Result[ii] = find.r2(pred, EEG.db.test$Mean.LE.SNR, plot = FALSE, text = FALSE)[2]
-  }
- Avg.Result[i,2] = mean(RMSE.Result)
- Avg.Result[i,3] = mean(R_2)
- 
-  
-} 
-
-kable(Avg.Result, row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
-  column_spec(1,color="black", bold=T)%>%
-  row_spec(0:nrow(Avg.Result),color = "black")
-print('Model with lowest RMSE = ')
-Avg.Result[which.min(Avg.Result$Avg.RMSE),]
-
-mtry.best = Avg.Result[which.min(Avg.Result$Avg.RMSE),]$mtry.list
-print(mtry.best)
-```
-
-## Now run the model with the best of trees and variables to try
-
-```{r}
-
-EEG.model = randomForest(formula = Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% lasso_var.out], ntree = ntree.best, mtry = mtry.best, importance=TRUE)
-
-  # model output
-  EEG.model
-  # plot tree error
-  plot(EEG.model)
-
-
-# plot(EEG.model$importance)
-
-varImpPlot(EEG.model)
-
-pred = predict(EEG.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% lasso_var.out])
-
-  # Find Test R^2
-  find.r2(pred, EEG.db[['test']]$Mean.LE.SNR, output = FALSE )
- 
-
-```
-
-### Compare to linear model
-
-```{r}
-EEG.lm.model = lm(Mean.LE.SNR ~ ., 
-                         data = EEG.db[['train']][colnames(EEG.db[['train']]) %in% lasso_var.out])
-
-  # model output
-  EEG.lm.model
-  # plot tree error
-  plot(EEG.lm.model)
-
-pred = predict(EEG.lm.model, EEG.db[['test']][colnames(EEG.db[['test']]) %in% lasso_var.out])
-
-  # Find Test R^2
-find.r2(pred, EEG.db[['test']]$Mean.LE.SNR, output = FALSE )
-
-```
-
-
 ## Xgboost approach
   https://www.kaggle.com/rtatman/machine-learning-with-xgboost-in-r
 https://xgboost.readthedocs.io/en/latest/R-package/xgboostPresentation.html
   https://analyticsindiamag.com/complete-guide-to-xgboost-with-implementation-in-r/
   https://towardsdatascience.com/implementing-an-xgboost-model-in-r-59ee1892be2f
 
-```{r}
-EEG.db.train = as.data.table(EEG.db[['train']])
-EEG.db.test = as.data.table(EEG.db[['test']])
-# grouping variables need to be 'one hot' 
-# find factor variables
-colnames(Filter(is.factor, EEG.db.train))
-Group.Matrix.train = model.matrix(~Group-1, EEG.db.train)
-Group.Matrix.test = model.matrix(~Group-1, EEG.db.test)
-# remove group variable
-EEG.db.train[,Group :=NULL]
-EEG.db.test[,Group := NULL]
-
-# merge 
-EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
-EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
-
-# get label, out outcome variable and make it separate
-train.label = EEG.db.train$Mean.LE.SNR
-EEG.db.train[, Mean.LE.SNR :=NULL]
-test.label = EEG.db.test$Mean.LE.SNR
-EEG.db.test[, Mean.LE.SNR :=NULL]
-
-# change into Dmatrix, remove all non-numberic columns (Sub)
-EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)# -1 to remove Sub
-EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
-```
-## Xgboost with all predictors
-
-```{r}
-# train model
-modelxg = xgboost(data = EEG.dm.train,
-                  max.depth = 2, 
-                  nthread = 3,
-                  nrounds = 10)
-
-pred = predict(modelxg, EEG.dm.test)
-
-find.r2(pred, test.label, output = FALSE )
-
-importance_matrix <- xgb.importance(model = modelxg)
-print(importance_matrix)
-xgb.plot.importance(importance_matrix = importance_matrix)
-
-```
-
-## Xgboost without EEG predictors
-
-```{r}
-#remove EEG vars
-EEG.db.train[, c("Alpha.d1","LTheta.d1","Alpha.peak","LTheta.peak" ) :=NULL]
-EEG.db.test[, c("Alpha.d1","LTheta.d1","Alpha.peak","LTheta.peak" ) :=NULL]
-
-# change into Dmatrix, remove all non-numberic columns (Sub)
-EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)
-EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
-```
-
-```{r}
-
-# train model
-modelxg = xgboost(data = EEG.dm.train,
-                  max.depth = 2, 
-                  nthread = 3,
-                  booster = 'gbtree',
-                  nrounds = 188) # max.depth = 2, nrounds = 188, min MSRE = 2.586
-
-pred = predict(modelxg, EEG.dm.test)
-
-# R2 of test data
-find.r2(pred, test.label, output = FALSE )
-
-# importance of variables
-importance_matrix <- xgb.importance(model = modelxg)
-print(importance_matrix)
-xgb.plot.importance(importance_matrix = importance_matrix)
-
-# # plot tree
-# xgb.plot.tree(model = modelxg)
-
-```
 
 Nice turning grid example:
 https://shengyg.github.io/repository/machine%20learning/2017/02/25/Complete-Guide-to-Parameter-Tuning-xgboost.html
 https://www.hackerearth.com/practice/machine-learning/machine-learning-algorithms/beginners-tutorial-on-xgboost-parameter-tuning-r/tutorial/
 
 
-## Xgboost use only clinic measures
 
 ```{r}
-#limit to only clinic vars
-EEG.db.train.clinic = EEG.db.train[, c("Sub", "Age","Education","MoCA","L250","L500","L1000","L2000","L3000", "L4000","L6000",
-                 "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000","PTA","HF_PTA" )]
-EEG.db.test.clinic = EEG.db.test[, c("Sub", "Age","Education","MoCA","L250","L500","L1000","L2000","L3000", "L4000","L6000",
-                 "L8000","R250","R500","R1000","R2000","R3000","R4000", "R6000","R8000","PTA","HF_PTA" )]
+# Create Clinical data sets:
+Clinic.train = dplyr::select(EEG.train, c(Sub, Age,Education,L250,L500,L1000,L2000,L3000, L4000,L6000,
+                 L8000,R250,R500,R1000,R2000,R3000,R4000, R6000,R8000,PTA,HF_PTA, label))
+Clinic.test = dplyr::select(EEG.test, c(Sub, Age,Education,L250,L500,L1000,L2000,L3000, L4000,L6000,
+                 L8000,R250,R500,R1000,R2000,R3000,R4000, R6000,R8000,PTA,HF_PTA, label))
 
-# change into Dmatrix, remove all non-numberic columns (Sub)
-EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train.clinic[,-1]), label = train.label)
-EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test.clinic[,-1]), label = test.label)
-```
-
-```{r}
-
-# train model
-modelxg = xgboost(data = EEG.dm.train,
-                  max.depth = 2, 
-                  nthread = 3,
-                  booster = 'gbtree',
-                  nrounds = 260) # max.depth = 2, nrounds = 254, min MSRE = 3.012
-
-pred = predict(modelxg, EEG.dm.test)
-
-# R2 of test data
-find.r2(pred, test.label, output = FALSE )
-
-# importance of variables
-importance_matrix <- xgb.importance(model = modelxg)
-print(importance_matrix)
-xgb.plot.importance(importance_matrix = importance_matrix)
-
-# # plot tree
-# xgb.plot.tree(model = modelxg)
-
-```
-
-## Catigorical approach
-```{r}
-print(EEG.ml%>%ggplot(aes(x =Mean.LE.SNR, fill = Group ))+
- geom_histogram(bins = 25, color="#e9ecef", alpha=0.6, position = 'identity'))
-```
-
-
-### Catigories of Effort:
-Minimal = 6 - 14
-Normal = 14 -18
-Above Normal = 18 - 24
-
-```{r}
-EEG.db.train = as.data.table(EEG.db[['train']])
-EEG.db.test = as.data.table(EEG.db[['test']])
+train_data = as.data.table(Clinic.train)
+test_data = as.data.table(Clinic.test)
 
 # grouping variables need to be 'one hot' 
-# find factor variables
-colnames(Filter(is.factor, EEG.db.train))
-Group.Matrix.train = model.matrix(~Group-1, EEG.db.train)
-Group.Matrix.test = model.matrix(~Group-1, EEG.db.test)
+# # find factor variables
+# colnames(Filter(is.factor, train_data))
+# Group.Matrix.train = model.matrix(~Group-1, train_data)
+# Group.Matrix.test = model.matrix(~Group-1, test_test)
 
-# remove group variable
-EEG.db.train[,Group :=NULL]
-EEG.db.test[,Group := NULL]
+# # remove group variable
+# EEG.db.train[,Group :=NULL]
+# EEG.db.test[,Group := NULL]
+# 
+# # merge 
+# EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
+# EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
 
-# merge 
-EEG.db.train = cbind(EEG.db.train, Group.Matrix.train)
-EEG.db.test = cbind(EEG.db.test, Group.Matrix.test)
-
-# Make grouping variables for categories of effort 
-# Effort categories: 0= below normal, 1 = normal, 2 = above normal
-EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 14, '0',
-                     ifelse(EEG.db.train$Mean.LE.SNR <= 18, '1', 
-                     ifelse(EEG.db.train$Mean.LE.SNR < 24, '2','2'))))
-
-EEG.db.test$Cat_Effort = as.numeric(ifelse(EEG.db.test$Mean.LE.SNR <= 14, '0',
-                     ifelse(EEG.db.test$Mean.LE.SNR <= 18, '1', 
-                     ifelse(EEG.db.test$Mean.LE.SNR < 24, '2','2'))))
+# # Make grouping variables for categories of effort 
+# # Effort categories: 0= below normal, 1 = normal, 2 = above normal
+# EEG.db.train$Cat_Effort = as.numeric(ifelse(EEG.db.train$Mean.LE.SNR <= 14, '0',
+#                      ifelse(EEG.db.train$Mean.LE.SNR <= 18, '1', 
+#                      ifelse(EEG.db.train$Mean.LE.SNR < 24, '2','2'))))
+# 
+# EEG.db.test$Cat_Effort = as.numeric(ifelse(EEG.db.test$Mean.LE.SNR <= 14, '0',
+#                      ifelse(EEG.db.test$Mean.LE.SNR <= 18, '1', 
+#                      ifelse(EEG.db.test$Mean.LE.SNR < 24, '2','2'))))
 
 # # Make grouping matrix
 # train.label = model.matrix(~Cat_Effort-1, EEG.db.train)
 # test.label = model.matrix(~Cat_Effort-1, EEG.db.test)
 
 # Make label matrix
-train.label = as.matrix(EEG.db.train$Cat_Effort)
-test.label = as.matrix(EEG.db.test$Cat_Effort)
+train.label = as.matrix(train_data$label)
+test.label = as.matrix(test_data$label)
 
 # # remove group variable
 # EEG.db.train[,Cat_Effort :=NULL]
@@ -1421,17 +1150,17 @@ test.label = as.matrix(EEG.db.test$Cat_Effort)
 
 # get label, out outcome variable and make it separate
 # train.label = EEG.db.train$Cat_Effort
-EEG.db.train[, Cat_Effort :=NULL]
+train_data[, label :=NULL]
 # test.label = EEG.db.test$Cat_Effort
-EEG.db.test[, Cat_Effort :=NULL]
-
-# Remove continuous outcome var
-EEG.db.train[, Mean.LE.SNR :=NULL]
-EEG.db.test[, Mean.LE.SNR :=NULL]
+test_data[, label :=NULL]
+# 
+# # Remove continuous outcome var
+# train_data [, Mean.LE.SNR :=NULL]
+# EEG.db.test[, Mean.LE.SNR :=NULL]
 
 # change into Dmatrix, remove all non-numeric columns (Sub)
-EEG.dm.train = xgb.DMatrix(data = as.matrix(EEG.db.train[,-1]), label = train.label)# -1 to remove Sub
-EEG.dm.test = xgb.DMatrix(data = as.matrix(EEG.db.test[,-1]), label = test.label)
+EEG.dm.train = xgb.DMatrix(data = as.matrix(train_data[,-1]), label = train.label)# -1 to remove Sub
+EEG.dm.test = xgb.DMatrix(data = as.matrix(test_data[,-1]), label = test.label)
 ```
 
 
@@ -1449,7 +1178,7 @@ xgb_params <- list("objective" = "multi:softprob",
 nround    <- 175 # number of rounds
 
 # CV folds, how many folds
- # length(train.label)/3
+  length(train.label)/10
 cv.nfold  <- 7
 
 # Fit cv.nfold * cv.nround XGB models and save OOF predictions
