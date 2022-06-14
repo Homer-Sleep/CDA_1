@@ -719,9 +719,11 @@ for (i in Groups) {
   thisdt = dplyr::filter(EEG.ml.wider, Group == i)
   sub.names = unique(thisdt$Sub)
   if (i == 'ONH'){
+    set.seed(1)
     test.obs[[i]] = sample(sub.names, size = length(sub.names)*.3 )
   }else{
-  test.obs[[i]] = sample(sub.names, size = length(sub.names)*.2 )
+    set.seed(1)
+  test.obs[[i]] = sample(sub.names, size = length(sub.names)*.3 )
   }
 }
 test.obs = c(test.obs[['YN']], test.obs[['ONH']], test.obs[['OHL']])
@@ -757,9 +759,9 @@ for (i in train_test){
 Update, just run Clinical data set
 ```{r}
 
-# # Create EEG, WIN, and Clinical data sets: 
-# EEG.train =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
-# EEG.test =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
+# Create EEG, WIN, and Clinical data sets:
+EEG.train =  dplyr::filter(EEG.ml.wider, !Sub %in% test.obs)# remove Subs in test.obs
+EEG.test =  dplyr::filter(EEG.ml.wider, Sub %in% test.obs)# keep Subs in test.obs
 # 
 # # Create WIN and Clinical data sets:
 # 
@@ -778,12 +780,30 @@ Clinic.test = dplyr::select(EEG.test, c(Sub, Age,Education,L250,L500,L1000,L2000
 
 ```{r}
 #create table for model result comparison: logistic Regression (LR), Random Forest (RF), XGBoost (XGB)
-Model_Test_Result = data.frame(Model = c('Logistic',  'Lasso', 'ElasticNet',
+Model_Test_Result = data.frame(Model = c('Logistic',  'Lasso', 
                                      'ExpandedElasticNet','RandomForest', 'XGBoost'), 
-                           Accuracy = rep(NA, 6), Acc_p = rep(NA, 6), Sensitivity = rep(NA, 6), Specificity = rep(NA, 6), 
-                           Bal_Acc = rep(NA, 6))
+                           Accuracy = rep(NA, 5),  Sensitivity = rep(NA, 5), Specificity = rep(NA, 5), 
+                           Bal_Acc = rep(NA, 5))
 
 Model_Train_Result = Model_Test_Result
+
+add_train = function(this_result = this_result, Model_i){
+  Model_Train_Result[Model_i,2] = round(this_result[["overall"]][["Accuracy"]], digits = 3)
+  Model_Train_Result[Model_i,3] = round(this_result[["byClass"]][["Sensitivity"]], digits = 3)
+  Model_Train_Result[Model_i,4] = round(this_result[["byClass"]][["Specificity"]], digits = 3)
+  Model_Train_Result[Model_i,5] = round(this_result[["byClass"]][["Balanced Accuracy"]], digits = 3)
+  return(Model_Train_Result)
+}
+
+add_test = function(this_result = this_result, Model_i){
+  Model_Test_Result[Model_i,2] = round(this_result[["overall"]][["Accuracy"]], digits = 3)
+  Model_Test_Result[Model_i,3] = round(this_result[["byClass"]][["Sensitivity"]], digits = 3)
+  Model_Test_Result[Model_i,4] = round(this_result[["byClass"]][["Specificity"]], digits = 3)
+  Model_Test_Result[Model_i,5] = round(this_result[["byClass"]][["Balanced Accuracy"]], digits = 3)
+  return(Model_Test_Result)
+}
+
+
 ```
 
 
@@ -791,27 +811,35 @@ Model_Train_Result = Model_Test_Result
 
 ```{r}
 
-  #logistic model
-  train_data = Clinic.train[,-1]
-  test_data = Clinic.test[,-1]
-  
-  this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
- 
-  # predict
-  pred = predict(this_model, test_data, type = 'response')
-  prediction = as.numeric(pred > 0.5)
+#logistic model
+train_data = Clinic.train[,-1]
+test_data = Clinic.test[,-1]
 
-  # confusion matrix of test set
-  this_result = confusionMatrix(factor(prediction),
-                factor(test_data$label),
-                mode = "everything")
-  # select measures of classification
-  Model_Test_Result[1,2] = this_result[["overall"]][["Accuracy"]]
-  Model_Test_Result[1,3] = this_result[["overall"]][["AccuracyPValue"]]
-  Model_Test_Result[1,4] = this_result[["byClass"]][["Sensitivity"]]
-  Model_Test_Result[1,5] = this_result[["byClass"]][["Specificity"]]
-  Model_Test_Result[1,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-  Model_Test_Result
+this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
+summary(this_model)
+# predict Test results
+pred = predict(this_model, train_data, type = 'response')
+prediction = as.numeric(pred > 0.5)
+
+# training results:
+this_result = confusionMatrix(factor(prediction),
+              factor(train_data$label),
+              mode = "everything")
+# select measures of classification
+Model_Train_Result = add_train(this_result = this_result, Model_i = 1)
+
+# Test results:
+# predict
+pred = predict(this_model, test_data, type = 'response')
+prediction = as.numeric(pred > 0.5)
+
+# confusion matrix of test set
+this_result = confusionMatrix(factor(prediction),
+              factor(test_data$label),
+              mode = "everything")
+# select measures of classification
+Model_Test_Result = add_test(this_result = this_result, Model_i = 1)
+
 
 ```
 
@@ -847,7 +875,8 @@ test_output = Clinic.test$label
 test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
 
 lambda_seq = 10^seq(2, -2, by = -.1)
-EEG.lasso = cv.glmnet(train_data, train_output , alpha = 1, nfolds = 6, lambda = lambda_seq ) # run 6-fold cross-validation of lasso
+# run 6-fold cross-validation of lasso
+EEG.lasso = cv.glmnet(train_data, train_output , alpha = 1, nfolds = 10, lambda = lambda_seq ) 
 
 # plot test MSE by lambda value
 plot( EEG.lasso )
@@ -856,11 +885,20 @@ plot( EEG.lasso )
 best_model = glmnet(train_data, train_output , alpha = 1, lambda = EEG.lasso$lambda.min)
 EEG.best.model.coeff=  coef(best_model)
 EEG.best.model.coeff
-  # print(plot(best_model, xvar = "lambda"))
-  # Rebuilding the model with best lambda value identified
 
+# Rebuilding the model with best lambda value identified
+# predict Train results
+pred = predict( best_model, s = EEG.lasso$lambda.min, newx = train_data, type = 'response')
+prediction = as.numeric(pred > 0.5)
 
-# predict
+# training results:
+this_result = confusionMatrix(factor(prediction),
+              factor(train_output),
+              mode = "everything")
+# select measures of classification
+Model_Train_Result = add_train(this_result = this_result, Model_i = 2)
+
+# predict Test data
 pred <- predict( best_model, s = EEG.lasso$lambda.min, newx = test_data, type = 'response')
 prediction = as.numeric(pred > 0.5)
 
@@ -869,81 +907,75 @@ this_result = confusionMatrix(factor(prediction),
                 factor(test_output),
                 mode = "everything")
 # select measures of classification
-Model_Test_Result[2,2] = this_result[["overall"]][["Accuracy"]]
-Model_Test_Result[2,3] = this_result[["overall"]][["AccuracyPValue"]]
-Model_Test_Result[2,4] = this_result[["byClass"]][["Sensitivity"]]
-Model_Test_Result[2,5] = this_result[["byClass"]][["Specificity"]]
-Model_Test_Result[2,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-Model_Test_Result
+  Model_Test_Result = add_test(this_result = this_result, Model_i = 2)
   
 ```
 
 ### Elastic-Net, avg of 50 interations #3
 
 ```{r}
-#Data prep
-train_data = Clinic.train
-train_data$label = factor(train_data$label)
-
+# #Data prep
+# train_data = Clinic.train
+# train_data$label = factor(train_data$label)
+# 
+# # # make output variable
+# # train_output = Clinic.train$label 
+# # # make parameters matrix
+# train_data_NoLabel = data.matrix(Clinic.train[!colnames(Clinic.train) == 'label'])
+# 
+# # Test data set:
 # # make output variable
-# train_output = Clinic.train$label 
+# test_output = Clinic.test$label 
 # # make parameters matrix
-train_data_NoLabel = data.matrix(Clinic.train[!colnames(Clinic.train) == 'label'])
-
-# Test data set:
-# make output variable
-test_output = Clinic.test$label 
-# make parameters matrix
-test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
-
-
-
-# From https://daviddalpiaz.github.io/r4sl/elastic-net.html
-# Train n= 42, 6 folds give 7 results
+# test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
+# 
+# 
+# 
+# # From https://daviddalpiaz.github.io/r4sl/elastic-net.html
+# 
+# # Train n= 42, 6 folds give 7 results
 get_best_result = function(caret_fit) {
   best = which(rownames(caret_fit$results) == rownames(caret_fit$bestTune))
   best_result = caret_fit$results[best, ]
   rownames(best_result) = NULL
   best_result
 }
-set.seed(42)
-cv_6 = trainControl(method = "cv", number = 6)
-el.net.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
-                           RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
-for (i in 1:50){
-el.net = train(label ~., data =train_data, method = "glmnet", trControl = cv_6)
-el.net.result[i,]= get_best_result(el.net)[1,1:4]
-}
-
-summary(el.net.result)
-print('how often was alpha == 1?')
- sum(el.net.result$alpha == 1)/50
- print('Already did a lasso, lets try alpha = .055')
- # New model with best results
-  # find coefficients of best model:
-  best_model = glmnet(train_data_NoLabel, train_output , alpha = .55, lambda = min(el.net.result$lambda))
-  EEG.best.model.coeff=  coef(best_model)
-  print( EEG.best.model.coeff)
-  # print(plot(best_model, xvar = "lambda"))
-  # Rebuilding the model with best lambda value identified
-
-# predict
-pred <- predict( best_model, newx = test_data, type = 'response')
-prediction = as.numeric(pred > 0.5)
-
-# confusion matrix of test set
-this_result = confusionMatrix(factor(prediction),
-                factor(test_output),
-                mode = "everything")
-# select measures of classification
-Model_Test_Result[3,2] = this_result[["overall"]][["Accuracy"]]
-Model_Test_Result[3,3] = this_result[["overall"]][["AccuracyPValue"]]
-Model_Test_Result[3,4] = this_result[["byClass"]][["Sensitivity"]]
-Model_Test_Result[3,5] = this_result[["byClass"]][["Specificity"]]
-Model_Test_Result[3,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-Model_Test_Result
+# set.seed(42)
+# cv_num = trainControl(method = "cv", number = 10)
+# # el.net.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
+# #                            RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
+# 
+# # for (i in 1:50){
+# el.net = train(label ~., data =train_data, method = "glmnet", trControl = cv_num)
+# # el.net.result[i,]= get_best_result(el.net)[1,1:4]
+# # }
+# el.net.result= get_best_result(el.net)
+# 
+# summary(el.net.result)
+# print('how often was alpha == 1?')
+# 
+#  # New model with best results
+#   # find coefficients of best model:
+#   best_model = glmnet(train_data_NoLabel, train_output , alpha = el.net.result$alpha,
+#                       lambda = min(el.net.result$lambda))
+#   EEG.best.model.coeff=  coef(best_model)
+#   print( EEG.best.model.coeff)
+#   # print(plot(best_model, xvar = "lambda"))
+#   # Rebuilding the model with best lambda value identified
+# 
+# # predict
+# pred <- predict( best_model, newx = test_data, type = 'response')
+# prediction = as.numeric(pred > 0.5)
+# 
+# # confusion matrix of test set
+# this_result = confusionMatrix(factor(prediction),
+#                 factor(test_output),
+#                 mode = "everything")
+# # select measures of classification
+#   Model_Test_Result = add_test(this_result = this_result, Model_i = 3)
 ```
 
+## Elastic Net Expanded # 3
 ### Now try a larger model search with all interactions and 10 alpha values, avg of 50 interations.
 
 ```{r, warning=FALSE}
@@ -963,22 +995,40 @@ test_output = Clinic.test$label
 test_data = data.matrix(Clinic.test[!colnames(Clinic.test) == 'label'])
 
 set.seed(42)
-cv_6 = trainControl(method = "cv", number = 6)
+cv_num = trainControl(method = "cv", number = 10)
 el.net.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
                            RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
-for (i in 1:50){
-el.net = train(label ~.^2, data = train_data, method = "glmnet", trControl = cv_6, tuneLength = 10)
-el.net.result[i,]= get_best_result(el.net)[1,1:4]
-}
+# for (i in 1:10){
+el.net = train(label ~.^2, 
+               data = train_data, 
+               method = "glmnet", 
+               trControl = cv_num, 
+               tuneLength = 10)
+# el.net.result[i,]= get_best_result(el.net)[1,1:4]
+# }
 
-summary(el.net.result)
-best.el.net = el.net.result[which.min(el.net.result$RMSE),]
+# summary(el.net.result)
+# best.el.net = el.net.result[which.min(el.net.result$RMSE),]
+
+
+best.el.net = get_best_result(el.net)
 
 # New model with best results
 # find coefficients of best model:
 best_model = glmnet(train_data_NoLabel, train_output , alpha = best.el.net$alpha, lambda = best.el.net$lambda)
 EEG.best.model.coeff=  coef(best_model)
 print( EEG.best.model.coeff)
+
+# predict Train results
+pred <- predict( best_model, newx = train_data_NoLabel, type = 'response')
+prediction = as.numeric(pred > 0.5)
+
+# training results:
+this_result = confusionMatrix(factor(prediction),
+              factor(train_output),
+              mode = "everything")
+# select measures of classification
+Model_Train_Result = add_train(this_result = this_result, Model_i = 3)
 
 # predict
 pred <- predict( best_model, newx = test_data, type = 'response')
@@ -989,12 +1039,7 @@ this_result = confusionMatrix(factor(prediction),
                 factor(test_output),
                 mode = "everything")
 # select measures of classification
-Model_Test_Result[4,2] = this_result[["overall"]][["Accuracy"]]
-Model_Test_Result[4,3] = this_result[["overall"]][["AccuracyPValue"]]
-Model_Test_Result[4,4] = this_result[["byClass"]][["Sensitivity"]]
-Model_Test_Result[4,5] = this_result[["byClass"]][["Specificity"]]
-Model_Test_Result[4,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-Model_Test_Result
+  Model_Test_Result = add_test(this_result = this_result, Model_i = 3)
   
 
 ```
@@ -1026,6 +1071,19 @@ test_data$label = factor(test_data$label)
 
 varImpPlot(RF_model)
 
+# predict Train data
+prediction = predict(RF_model, train_data, type = 'response')
+
+ # prediction = as.numeric(pred > 0.5)
+
+  # confusion matrix of test set
+  this_result = confusionMatrix(prediction,
+                train_data$label,
+                mode = "everything")
+  # select measures of classification
+  Model_Train_Result = add_train(this_result = this_result, Model_i = 4)
+
+# Predict Test data:
 prediction = predict(RF_model, test_data, type = 'response')
 
  # prediction = as.numeric(pred > 0.5)
@@ -1035,12 +1093,7 @@ prediction = predict(RF_model, test_data, type = 'response')
                 test_data$label,
                 mode = "everything")
   # select measures of classification
-  Model_Test_Result[5,2] = this_result[["overall"]][["Accuracy"]]
-  Model_Test_Result[5,3] = this_result[["overall"]][["AccuracyPValue"]]
-  Model_Test_Result[5,4] = this_result[["byClass"]][["Sensitivity"]]
-  Model_Test_Result[5,5] = this_result[["byClass"]][["Specificity"]]
-  Model_Test_Result[5,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-  Model_Test_Result
+  Model_Test_Result = add_test(this_result = this_result, Model_i = 4)
 
 ```
 
@@ -1170,8 +1223,7 @@ xgb_params <- list("objective" = "multi:softprob",
 nround    <- 175 # number of rounds
 
 # CV folds, how many folds
-  length(train.label)/10
-cv.nfold  <- 7
+cv.nfold  <- 10
 
 # Fit cv.nfold * cv.nround XGB models and save OOF predictions
 cv_model <- xgb.cv(params = xgb_params,
@@ -1191,12 +1243,7 @@ this_result = confusionMatrix(factor(OOF_prediction$max_prob),
                 mode = "everything")
 
 # select measures of classification
-Model_Train_Result[6,2] = this_result[["overall"]][["Accuracy"]]
-Model_Train_Result[6,3] = this_result[["overall"]][["AccuracyPValue"]]
-Model_Train_Result[6,4] = this_result[["byClass"]][["Sensitivity"]]
-Model_Train_Result[6,5] = this_result[["byClass"]][["Specificity"]]
-Model_Train_Result[6,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-Model_Train_Result
+Model_Train_Result = add_train(this_result = this_result, Model_i = 5)
   
 
 ```
@@ -1226,12 +1273,7 @@ this_result = confusionMatrix(factor(test_prediction$max_prob),
                 factor(test_prediction$label),
                 mode = "everything")
 # select measures of classification
-Model_Test_Result[6,2] = this_result[["overall"]][["Accuracy"]]
-Model_Test_Result[6,3] = this_result[["overall"]][["AccuracyPValue"]]
-Model_Test_Result[6,4] = this_result[["byClass"]][["Sensitivity"]]
-Model_Test_Result[6,5] = this_result[["byClass"]][["Specificity"]]
-Model_Test_Result[6,6] = this_result[["byClass"]][["Balanced Accuracy"]]
-Model_Test_Result
+  Model_Test_Result = add_test(this_result = this_result, Model_i = 5)
 
 
 # get the feature real names
@@ -1246,11 +1288,14 @@ xgb.ggplot.importance(importance_matrix)
 
 ## Compare Model Results
 ```{r}
+kable(Model_Train_Result, row.names= F, caption = '<b>Training Data Results</b>')%>%
+  kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+  column_spec(1,color="black", bold=T)%>%
+  row_spec(0:nrow(Model_Train_Result),color = "black")
 
-kable(Model_Test_Result, row.names= F)%>%kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
+kable(Model_Test_Result, row.names= F, caption = '<b>Test Data Results</b>')%>%
+  kable_styling(bootstrap_options = c(  "condensed"),full_width = F)%>%
   column_spec(1,color="black", bold=T)%>%
   row_spec(0:nrow(Model_Test_Result),color = "black")
-
-
 ```
 
