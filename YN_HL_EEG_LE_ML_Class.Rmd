@@ -816,7 +816,7 @@ train_data = Clinic.train[,-1]
 test_data = Clinic.test[,-1]
 
 this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
-
+summary(this_model)
 # predict Test results
 pred = predict(this_model, train_data, type = 'response')
 prediction = as.numeric(pred > 0.5)
