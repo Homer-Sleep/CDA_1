@@ -1626,14 +1626,14 @@ contrasts(Epoch_List[[1]]$Paradigm)
 
 ### Examine the null effect of group in carrier phrase
 # lm model of data for freq plot
-
+i = 1
 lm_freqplot =  lme(Power ~ Group, random=~1|Sub,
                    data=filter(Freq_plot[[i]], Frequency == "Theta"), method="ML")
 
 summary(lm_freqplot)
 summary(Theta_Group)
 
-i = 1
+
 CarrierTheta=filter(Epoch_List[[i]], Response != "NoRes")
 
 summary(CarrierTheta$Theta)
