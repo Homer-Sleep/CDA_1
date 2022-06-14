@@ -840,6 +840,7 @@ this_result = confusionMatrix(factor(prediction),
 # select measures of classification
 Model_Test_Result = add_test(this_result = this_result, Model_i = 1)
 
+plot(this_model)
 
 ```
 
