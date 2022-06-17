@@ -814,11 +814,24 @@ add_test = function(this_result = this_result, Model_i){
 #logistic model
 train_data = Clinic.train[,-1]
 test_data = Clinic.test[,-1]
+ # add cv:
+set.seed(42)
+cv_num = trainControl(method = "cv", number = 10)
+logit.result = data.table(alpha = as.numeric(rep(NA, 50)), lambda = as.numeric(rep(NA, 50)), 
+                           RMSE = as.numeric(rep(NA, 50)), Rsquared = as.numeric(rep(NA, 50)))
+# for (i in 1:10){
+logit.ml = train(label ~.^2, 
+               data = train_data, 
+               method = "glm", 
+               family = 'binomial',
+               trControl = cv_num, 
+               tuneLength = 10)
 
-this_model = glm(label ~ ., data=train_data, family = 'binomial'(link = 'logit'))
-summary(this_model)
+# exp(coef(logit.ml$finalModel))
+
+# summary(logit.ml)
 # predict Test results
-pred = predict(this_model, train_data, type = 'response')
+pred = predict(logit.ml, train_data)
 prediction = as.numeric(pred > 0.5)
 
 # training results:
@@ -830,7 +843,7 @@ Model_Train_Result = add_train(this_result = this_result, Model_i = 1)
 
 # Test results:
 # predict
-pred = predict(this_model, test_data, type = 'response')
+pred = predict(logit.ml, test_data)
 prediction = as.numeric(pred > 0.5)
 
 # confusion matrix of test set
@@ -839,8 +852,6 @@ this_result = confusionMatrix(factor(prediction),
               mode = "everything")
 # select measures of classification
 Model_Test_Result = add_test(this_result = this_result, Model_i = 1)
-
-plot(this_model)
 
 ```
 
